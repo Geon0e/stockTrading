@@ -9,7 +9,14 @@ from order.order_client import OrderClient
 from strategy.ma_cross_strategy import MaCrossStrategy
 from screener.stock_screener import StockScreener
 from audit.trade_logger import TradeLogger
-from notifications.kakao_notifier import from_env as kakao_from_env, notify_buy, notify_sell, notify_scan_result
+from notifications.kakao_notifier import from_env as kakao_from_env
+from notifications.kakao_notifier import notify_buy as kakao_notify_buy
+from notifications.kakao_notifier import notify_sell as kakao_notify_sell
+from notifications.kakao_notifier import notify_scan_result as kakao_notify_scan
+from notifications.telegram_notifier import from_env as telegram_from_env
+from notifications.telegram_notifier import notify_buy as tg_notify_buy
+from notifications.telegram_notifier import notify_sell as tg_notify_sell
+from notifications.telegram_notifier import notify_scan_result as tg_notify_scan
 
 logging.basicConfig(
     level=logging.INFO,
@@ -24,9 +31,30 @@ def is_market_open() -> bool:
     now = datetime.datetime.now(KST)
     if now.weekday() >= 5:
         return False
-    open_time = now.replace(hour=9, minute=0, second=0, microsecond=0)
+    open_time  = now.replace(hour=9,  minute=0,  second=0, microsecond=0)
     close_time = now.replace(hour=15, minute=30, second=0, microsecond=0)
     return open_time <= now <= close_time
+
+
+def _notify_buy(ctx, code, quantity, price):
+    if ctx.get("kakao_bot"):
+        kakao_notify_buy(ctx["kakao_bot"], code, quantity, price)
+    if ctx.get("telegram_bot"):
+        tg_notify_buy(ctx["telegram_bot"], code, quantity, price)
+
+
+def _notify_sell(ctx, code, quantity, price):
+    if ctx.get("kakao_bot"):
+        kakao_notify_sell(ctx["kakao_bot"], code, quantity, price)
+    if ctx.get("telegram_bot"):
+        tg_notify_sell(ctx["telegram_bot"], code, quantity, price)
+
+
+def _notify_scan(ctx, results):
+    if ctx.get("kakao_bot"):
+        kakao_notify_scan(ctx["kakao_bot"], results)
+    if ctx.get("telegram_bot"):
+        tg_notify_scan(ctx["telegram_bot"], results)
 
 
 def run_cycle(ctx: dict) -> None:
@@ -36,10 +64,8 @@ def run_cycle(ctx: dict) -> None:
 
     config = ctx["config"]
     try:
-        token = ctx["token_manager"].get_valid_token()
+        token    = ctx["token_manager"].get_valid_token()
         holdings = ctx["order_client"].get_holdings(token)
-
-        bot = ctx.get("kakao_bot")
 
         # 1. 보유 종목 데드크로스 체크 → 매도
         for stock_code, qty in list(holdings.items()):
@@ -50,22 +76,19 @@ def run_cycle(ctx: dict) -> None:
                 result = ctx["order_client"].sell(stock_code, qty, token)
                 ctx["trade_logger"].log("SELL", stock_code, qty, result)
                 del holdings[stock_code]
+                _notify_sell(ctx, stock_code, qty, prices[-1])
                 logger.info(f"매도 완료: {stock_code}")
-                if bot:
-                    notify_sell(bot, stock_code, qty, prices[-1])
 
-        # 2. 최대 보유 종목 수 미만이면 골든크로스 종목 스캔 → 매수
+        # 2. 빈 슬롯 있으면 골든크로스 스캔 → 매수
         if len(holdings) < config.max_positions:
-            buy_slots = config.max_positions - len(holdings)
-            candidates = ctx["screener"].scan(
-                token, all_stocks=config.scan_all_stocks
-            )
-            if candidates and bot:
-                notify_scan_result(bot, candidates)
+            candidates = ctx["screener"].scan(token, all_stocks=config.scan_all_stocks)
+
+            if candidates:
+                _notify_scan(ctx, candidates)
 
             bought = 0
             for candidate in candidates:
-                if bought >= buy_slots:
+                if bought >= config.max_positions - len(holdings):
                     break
                 code = candidate["code"]
                 if code in holdings:
@@ -73,11 +96,10 @@ def run_cycle(ctx: dict) -> None:
                 result = ctx["order_client"].buy(code, config.order_quantity, token)
                 ctx["trade_logger"].log("BUY", code, config.order_quantity, result)
                 holdings[code] = config.order_quantity
+                _notify_buy(ctx, code, config.order_quantity, candidate["price"])
                 bought += 1
-                if bot:
-                    notify_buy(bot, code, config.order_quantity, candidate["price"])
 
-            if bought == 0 and len(candidates) == 0:
+            if not candidates:
                 logger.info(f"[{config.mode}] 골든크로스 종목 없음 | 보유: {len(holdings)}개")
 
     except Exception as e:
@@ -92,23 +114,24 @@ def main() -> None:
         f"최대보유: {config.max_positions}개 | 주기: {config.check_interval_minutes}분"
     )
 
-    strategy = MaCrossStrategy(config.ma_short_period, config.ma_long_period)
+    strategy     = MaCrossStrategy(config.ma_short_period, config.ma_long_period)
     price_client = PriceClient(config)
-    kakao_bot = kakao_from_env()
-    if kakao_bot:
-        logger.info("카카오톡 알림 활성화")
-    else:
-        logger.info("카카오톡 알림 비활성화 (KAKAO_REST_API_KEY 미설정)")
+    kakao_bot    = kakao_from_env()
+    telegram_bot = telegram_from_env()
+
+    logger.info(f"카카오톡 알림: {'활성화' if kakao_bot else '비활성화'}")
+    logger.info(f"텔레그램 알림: {'활성화' if telegram_bot else '비활성화'}")
 
     ctx = {
-        "config": config,
+        "config":        config,
         "token_manager": TokenManager(config),
-        "price_client": price_client,
-        "order_client": OrderClient(config),
-        "strategy": strategy,
-        "screener": StockScreener(config, price_client, strategy),
-        "trade_logger": TradeLogger(config.mode),
-        "kakao_bot": kakao_bot,
+        "price_client":  price_client,
+        "order_client":  OrderClient(config),
+        "strategy":      strategy,
+        "screener":      StockScreener(config, price_client, strategy),
+        "trade_logger":  TradeLogger(config.mode),
+        "kakao_bot":     kakao_bot,
+        "telegram_bot":  telegram_bot,
     }
 
     schedule.every(config.check_interval_minutes).minutes.do(run_cycle, ctx)
