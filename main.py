@@ -9,6 +9,7 @@ from order.order_client import OrderClient
 from strategy.ma_cross_strategy import MaCrossStrategy
 from screener.stock_screener import StockScreener
 from audit.trade_logger import TradeLogger
+from notifications.kakao_notifier import from_env as kakao_from_env, notify_buy, notify_sell, notify_scan_result
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,6 +39,8 @@ def run_cycle(ctx: dict) -> None:
         token = ctx["token_manager"].get_valid_token()
         holdings = ctx["order_client"].get_holdings(token)
 
+        bot = ctx.get("kakao_bot")
+
         # 1. 보유 종목 데드크로스 체크 → 매도
         for stock_code, qty in list(holdings.items()):
             prices = ctx["price_client"].fetch_closing_prices(
@@ -48,6 +51,8 @@ def run_cycle(ctx: dict) -> None:
                 ctx["trade_logger"].log("SELL", stock_code, qty, result)
                 del holdings[stock_code]
                 logger.info(f"매도 완료: {stock_code}")
+                if bot:
+                    notify_sell(bot, stock_code, qty, prices[-1])
 
         # 2. 최대 보유 종목 수 미만이면 골든크로스 종목 스캔 → 매수
         if len(holdings) < config.max_positions:
@@ -55,6 +60,9 @@ def run_cycle(ctx: dict) -> None:
             candidates = ctx["screener"].scan(
                 token, all_stocks=config.scan_all_stocks
             )
+            if candidates and bot:
+                notify_scan_result(bot, candidates)
+
             bought = 0
             for candidate in candidates:
                 if bought >= buy_slots:
@@ -66,6 +74,8 @@ def run_cycle(ctx: dict) -> None:
                 ctx["trade_logger"].log("BUY", code, config.order_quantity, result)
                 holdings[code] = config.order_quantity
                 bought += 1
+                if bot:
+                    notify_buy(bot, code, config.order_quantity, candidate["price"])
 
             if bought == 0 and len(candidates) == 0:
                 logger.info(f"[{config.mode}] 골든크로스 종목 없음 | 보유: {len(holdings)}개")
@@ -84,6 +94,11 @@ def main() -> None:
 
     strategy = MaCrossStrategy(config.ma_short_period, config.ma_long_period)
     price_client = PriceClient(config)
+    kakao_bot = kakao_from_env()
+    if kakao_bot:
+        logger.info("카카오톡 알림 활성화")
+    else:
+        logger.info("카카오톡 알림 비활성화 (KAKAO_REST_API_KEY 미설정)")
 
     ctx = {
         "config": config,
@@ -93,6 +108,7 @@ def main() -> None:
         "strategy": strategy,
         "screener": StockScreener(config, price_client, strategy),
         "trade_logger": TradeLogger(config.mode),
+        "kakao_bot": kakao_bot,
     }
 
     schedule.every(config.check_interval_minutes).minutes.do(run_cycle, ctx)
