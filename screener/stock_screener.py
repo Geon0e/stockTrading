@@ -1,10 +1,10 @@
 import logging
 import time
 import requests
-from decimal import Decimal
 from typing import List, Dict
 from config import Config
 from strategy.base_strategy import BaseStrategy
+from screener.stock_list import fetch_all_stock_codes
 
 logger = logging.getLogger(__name__)
 
@@ -17,13 +17,22 @@ class StockScreener:
         self._price_client = price_client
         self._strategy = strategy
 
-    def scan(self, token: str, top_n: int = 100) -> List[Dict]:
-        """거래량 상위 종목 중 골든크로스 조건에 맞는 종목 반환"""
-        stock_codes = self._fetch_volume_top(token, top_n)
-        logger.info(f"스크리닝 대상: {len(stock_codes)}개 종목")
+    def scan(self, token: str, all_stocks: bool = False, top_n: int = 100) -> List[Dict]:
+        """골든크로스 조건에 맞는 종목 반환.
+
+        all_stocks=True : KOSPI + KOSDAQ 전종목 스캔 (~2,500개)
+        all_stocks=False: 거래량 상위 top_n개만 스캔
+        """
+        if all_stocks:
+            codes = fetch_all_stock_codes()
+        else:
+            codes = self._fetch_volume_top(token, top_n)
+
+        total = len(codes)
+        logger.info(f"스크리닝 시작: {total}개 종목")
 
         results = []
-        for code in stock_codes:
+        for i, code in enumerate(codes, 1):
             try:
                 prices = self._price_client.fetch_closing_prices(
                     code, self._strategy.required_data_points, token
@@ -31,11 +40,13 @@ class StockScreener:
                 if self._strategy.should_buy(prices):
                     results.append({"code": code, "price": prices[-1]})
                     logger.info(f"골든크로스 감지: {code} | 현재가: {prices[-1]}")
+                if i % 200 == 0:
+                    logger.info(f"진행: {i}/{total} | 감지: {len(results)}개")
                 time.sleep(0.05)  # API rate limit 방지
             except Exception as e:
                 logger.debug(f"{code} 스킵: {e}")
-                continue
 
+        logger.info(f"스크리닝 완료: {total}개 중 {len(results)}개 골든크로스")
         return results
 
     def _fetch_volume_top(self, token: str, top_n: int) -> List[str]:

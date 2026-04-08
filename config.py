@@ -32,11 +32,12 @@ class Config:
     tr_buy: str
     tr_sell: str
     tr_balance: str
-    target_stock: str
     order_quantity: int
     check_interval_minutes: int
     ma_short_period: int
     ma_long_period: int
+    scan_all_stocks: bool   # True: 전종목, False: 거래량 상위만
+    max_positions: int      # 최대 동시 보유 종목 수
 
 
 def load_config() -> Config:
@@ -67,10 +68,11 @@ def load_config() -> Config:
         account_no=account_no,
         cano=parts[0],
         acnt_prdt_cd=parts[1],
-        target_stock=os.getenv("TARGET_STOCK_CODE", "005930"),
         order_quantity=int(os.getenv("ORDER_QUANTITY", "1")),
         check_interval_minutes=int(os.getenv("CHECK_INTERVAL_MINUTES", "60")),
         ma_short_period=int(os.getenv("MA_SHORT_PERIOD", "5")),
         ma_long_period=int(os.getenv("MA_LONG_PERIOD", "20")),
+        scan_all_stocks=os.getenv("SCAN_ALL_STOCKS", "false").lower() == "true",
+        max_positions=int(os.getenv("MAX_POSITIONS", "5")),
         **env,
     )
