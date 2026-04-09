@@ -17,7 +17,23 @@
       "Bash(pip install:*)",
       "Bash(python3:*)",
       "Bash(.venv/bin/pip install:*)",
-      "Bash(.venv/bin/python3:*)"
+      "Bash(.venv/bin/python3:*)",
+      "Bash(kill %1)",
+      "Bash(wait)",
+      "Bash(.venv/bin/python:*)",
+      "Bash(echo \"PID: $!\")",
+      "Bash(chmod +x:*)",
+      "Bash(pkill -f \"python main.py\")",
+      "Bash(./start.sh:*)",
+      "Bash(kill 75280 75322)",
+      "Bash(bash stop.sh)",
+      "Bash(bash start.sh)",
+      "Bash(awk:*)",
+      "Bash(ps:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
+      "Bash(git rebase:*)",
+      "Bash(GIT_EDITOR=true git rebase:*)"
     ]
   }
 }

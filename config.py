@@ -10,6 +10,8 @@ _MOCK = {
     "tr_buy": "VTTC0802U",
     "tr_sell": "VTTC0801U",
     "tr_balance": "VTTC8434R",
+    "tr_overseas_buy": "VTTT1002U",
+    "tr_overseas_sell": "VTTT1001U",
 }
 
 _REAL = {
@@ -17,6 +19,8 @@ _REAL = {
     "tr_buy": "TTTC0802U",
     "tr_sell": "TTTC0801U",
     "tr_balance": "TTTC8434R",
+    "tr_overseas_buy": "TTTT1002U",
+    "tr_overseas_sell": "TTTT1001U",
 }
 
 
@@ -32,6 +36,8 @@ class Config:
     tr_buy: str
     tr_sell: str
     tr_balance: str
+    tr_overseas_buy: str
+    tr_overseas_sell: str
     order_quantity: int
     check_interval_minutes: int
     ma_short_period: int

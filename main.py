@@ -9,11 +9,6 @@ from order.order_client import OrderClient
 from strategy.ma_cross_strategy import MaCrossStrategy
 from screener.stock_screener import StockScreener
 from audit.trade_logger import TradeLogger
-from notifications.kakao_notifier import from_env as kakao_from_env
-from notifications.kakao_notifier import notify_buy as kakao_notify_buy
-from notifications.kakao_notifier import notify_sell as kakao_notify_sell
-from notifications.kakao_notifier import notify_scan_result as kakao_notify_scan
-from notifications.kakao_notifier import notify_take_profit_sell as kakao_notify_take_profit_sell
 from notifications.telegram_notifier import from_env as telegram_from_env
 from notifications.telegram_notifier import notify_buy as tg_notify_buy
 from notifications.telegram_notifier import notify_sell as tg_notify_sell
@@ -39,15 +34,11 @@ def is_market_open() -> bool:
 
 
 def _notify_buy(ctx, code, quantity, price):
-    if ctx.get("kakao_bot"):
-        kakao_notify_buy(ctx["kakao_bot"], code, quantity, price)
     if ctx.get("telegram_bot"):
         tg_notify_buy(ctx["telegram_bot"], code, quantity, price)
 
 
 def _notify_sell(ctx, code, quantity, price):
-    if ctx.get("kakao_bot"):
-        kakao_notify_sell(ctx["kakao_bot"], code, quantity, price)
     if ctx.get("telegram_bot"):
         tg_notify_sell(ctx["telegram_bot"], code, quantity, price)
 
@@ -60,8 +51,6 @@ def _notify_take_profit_sell(ctx, code, quantity, profit_rate):
 
 
 def _notify_scan(ctx, results):
-    if ctx.get("kakao_bot"):
-        kakao_notify_scan(ctx["kakao_bot"], results)
     if ctx.get("telegram_bot"):
         tg_notify_scan(ctx["telegram_bot"], results)
 
@@ -150,10 +139,8 @@ def main() -> None:
 
     strategy     = MaCrossStrategy(config.ma_short_period, config.ma_long_period)
     price_client = PriceClient(config)
-    kakao_bot    = kakao_from_env()
     telegram_bot = telegram_from_env()
 
-    logger.info(f"카카오톡 알림: {'활성화' if kakao_bot else '비활성화'}")
     logger.info(f"텔레그램 알림: {'활성화' if telegram_bot else '비활성화'}")
 
     ctx = {
@@ -164,7 +151,6 @@ def main() -> None:
         "strategy":      strategy,
         "screener":      StockScreener(config, price_client, strategy),
         "trade_logger":  TradeLogger(config.mode),
-        "kakao_bot":     kakao_bot,
         "telegram_bot":  telegram_bot,
     }
 

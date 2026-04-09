@@ -7,6 +7,8 @@ from config import Config
 logger = logging.getLogger(__name__)
 
 _ORDER_ENDPOINT = "/uapi/domestic-stock/v1/trading/order-cash"
+_OVERSEAS_ORDER_ENDPOINT = "/uapi/overseas-stock/v1/trading/order"
+_OVERSEAS_PRICE_ENDPOINT = "/uapi/overseas-price/v1/quotations/price"
 _BALANCE_ENDPOINT = "/uapi/domestic-stock/v1/trading/inquire-balance"
 _HASHKEY_ENDPOINT = "/uapi/hashkey"
 
@@ -20,6 +22,13 @@ class OrderClient:
 
     def sell(self, stock_code: str, quantity: int, token: str) -> dict:
         return self._place_order("매도", stock_code, quantity, self._config.tr_sell, token)
+
+    def buy_overseas(self, symbol: str, exchange: str, quantity: int, token: str) -> dict:
+        price = self._fetch_overseas_price(symbol, exchange, token)
+        return self._place_overseas_order("매수", symbol, exchange, quantity, price, self._config.tr_overseas_buy, token)
+
+    def sell_overseas(self, symbol: str, exchange: str, quantity: int, price: str, token: str) -> dict:
+        return self._place_overseas_order("매도", symbol, exchange, quantity, price, self._config.tr_overseas_sell, token)
 
     def get_holdings(self, token: str) -> Dict[str, int]:
         """보유 종목 조회. {종목코드: 수량} 형태로 반환"""
@@ -83,6 +92,37 @@ class OrderClient:
                 "profit_rate": Decimal(item.get("evlu_pfls_rt", "0")),
             }
         return result
+
+    def _fetch_overseas_price(self, symbol: str, exchange: str, token: str) -> str:
+        params = {"AUTH": "", "EXCD": exchange, "SYMB": symbol}
+        headers = self._headers("HHDFS00000300", token)
+        url = f"{self._config.base_url}{_OVERSEAS_PRICE_ENDPOINT}"
+        resp = requests.get(url, headers=headers, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("rt_cd") != "0":
+            raise RuntimeError(f"해외 가격 조회 실패 [{symbol}]: {data.get('msg1')}")
+        return data["output"]["last"]
+
+    def _place_overseas_order(self, side: str, symbol: str, exchange: str, quantity: int, price: str, tr_id: str, token: str) -> dict:
+        body = {
+            "CANO": self._config.cano,
+            "ACNT_PRDT_CD": self._config.acnt_prdt_cd,
+            "OVRS_EXCG_CD": exchange,
+            "PDNO": symbol,
+            "ORD_DVSN": "00",       # 지정가
+            "ORD_QTY": str(quantity),
+            "OVRS_ORD_UNPR": price,
+            "ORD_SVR_DVSN": "0",
+        }
+        url = f"{self._config.base_url}{_OVERSEAS_ORDER_ENDPOINT}"
+        resp = requests.post(url, headers=self._headers(tr_id, token), json=body, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("rt_cd") != "0":
+            raise RuntimeError(f"{side} 주문 실패 [{symbol}]: {data.get('msg1')}")
+        logger.info(f"[{self._config.mode}] 해외 {side} 완료 | {exchange}:{symbol} {quantity}주 @ {price}")
+        return data
 
     def _place_order(self, side: str, stock_code: str, quantity: int, tr_id: str, token: str) -> dict:
         body = {
