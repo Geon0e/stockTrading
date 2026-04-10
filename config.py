@@ -12,6 +12,7 @@ _MOCK = {
     "tr_balance": "VTTC8434R",
     "tr_overseas_buy": "VTTT1002U",
     "tr_overseas_sell": "VTTT1001U",
+    "tr_overseas_balance": "VTTS3012R",
 }
 
 _REAL = {
@@ -21,6 +22,7 @@ _REAL = {
     "tr_balance": "TTTC8434R",
     "tr_overseas_buy": "TTTT1002U",
     "tr_overseas_sell": "TTTT1001U",
+    "tr_overseas_balance": "TTTS3012R",
 }
 
 
@@ -38,13 +40,16 @@ class Config:
     tr_balance: str
     tr_overseas_buy: str
     tr_overseas_sell: str
+    tr_overseas_balance: str
+    scan_nasdaq: bool
+    us_scan_mode: str    # nasdaq100 | sp500 | all
     order_quantity: int
-    check_interval_minutes: int
     ma_short_period: int
     ma_long_period: int
     scan_all_stocks: bool   # True: 전종목, False: 거래량 상위만
     max_positions: int      # 최대 동시 보유 종목 수
     take_profit_rate: float # 익절 수익률 기준 (%)
+    stop_loss_pct: float    # 손절 기준 (예: 5.0 → 매입가 대비 -5% 시 매도, 0 = 비활성화)
 
 
 def load_config() -> Config:
@@ -75,12 +80,14 @@ def load_config() -> Config:
         account_no=account_no,
         cano=parts[0],
         acnt_prdt_cd=parts[1],
-        order_quantity=int(os.getenv("ORDER_QUANTITY", "1")),
-        check_interval_minutes=int(os.getenv("CHECK_INTERVAL_MINUTES", "60")),
         ma_short_period=int(os.getenv("MA_SHORT_PERIOD", "5")),
         ma_long_period=int(os.getenv("MA_LONG_PERIOD", "20")),
         scan_all_stocks=os.getenv("SCAN_ALL_STOCKS", "false").lower() == "true",
+        scan_nasdaq=os.getenv("SCAN_NASDAQ", "false").lower() == "true",
+        us_scan_mode=os.getenv("US_SCAN_MODE", "nasdaq100"),
+        order_quantity=int(os.getenv("ORDER_QUANTITY", "1")),
         max_positions=int(os.getenv("MAX_POSITIONS", "5")),
         take_profit_rate=float(os.getenv("TAKE_PROFIT_RATE", "5.0")),
+        stop_loss_pct=float(os.getenv("STOP_LOSS_PCT", "0")),
         **env,
     )

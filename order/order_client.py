@@ -1,12 +1,15 @@
 import logging
+import time
+import datetime
 import requests
 from decimal import Decimal
-from typing import Dict
+from typing import Dict, Optional
 from config import Config
 
 logger = logging.getLogger(__name__)
 
-_ORDER_ENDPOINT = "/uapi/domestic-stock/v1/trading/order-cash"
+_ORDER_ENDPOINT        = "/uapi/domestic-stock/v1/trading/order-cash"
+_EXECUTION_ENDPOINT    = "/uapi/domestic-stock/v1/trading/inquire-daily-ccld"
 _OVERSEAS_ORDER_ENDPOINT = "/uapi/overseas-stock/v1/trading/order"
 _OVERSEAS_PRICE_ENDPOINT = "/uapi/overseas-price/v1/quotations/price"
 _BALANCE_ENDPOINT = "/uapi/domestic-stock/v1/trading/inquire-balance"
@@ -27,11 +30,40 @@ class OrderClient:
         price = self._fetch_overseas_price(symbol, exchange, token)
         return self._place_overseas_order("매수", symbol, exchange, quantity, price, self._config.tr_overseas_buy, token)
 
-    def sell_overseas(self, symbol: str, exchange: str, quantity: int, price: str, token: str) -> dict:
+    def sell_overseas(self, symbol: str, exchange: str, quantity: int, token: str) -> dict:
+        price = self._fetch_overseas_price(symbol, exchange, token)
         return self._place_overseas_order("매도", symbol, exchange, quantity, price, self._config.tr_overseas_sell, token)
 
-    def get_holdings(self, token: str) -> Dict[str, int]:
-        """보유 종목 조회. {종목코드: 수량} 형태로 반환"""
+    def get_overseas_holdings(self, token: str) -> Dict[str, dict]:
+        """{심볼: {"qty": 수량, "exchange": 거래소}} 형태로 반환"""
+        params = {
+            "CANO": self._config.cano,
+            "ACNT_PRDT_CD": self._config.acnt_prdt_cd,
+            "OVRS_EXCG_CD": "NAS",
+            "TR_CRCY_CD": "USD",
+            "CTX_AREA_FK200": "",
+            "CTX_AREA_NK200": "",
+        }
+        url = f"{self._config.base_url}/uapi/overseas-stock/v1/trading/inquire-balance"
+        resp = requests.get(url, headers=self._headers(self._config.tr_overseas_balance, token), params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        if data.get("rt_cd") != "0":
+            raise RuntimeError(f"해외 잔고 조회 실패: {data.get('msg1')}")
+
+        return {
+            item["ovrs_pdno"]: {
+                "qty":       int(item.get("ovrs_cblc_qty", "0")),
+                "exchange":  item.get("ovrs_excg_cd", "NAS"),
+                "avg_price": item.get("pchs_avg_pric", "0"),
+            }
+            for item in data.get("output1", [])
+            if item.get("ovrs_pdno") and int(item.get("ovrs_cblc_qty", "0")) > 0
+        }
+
+    def get_holdings(self, token: str) -> Dict[str, dict]:
+        """보유 종목 조회. {종목코드: {"qty": 수량, "avg_price": 매입평균가}} 형태로 반환"""
         params = {
             "CANO": self._config.cano,
             "ACNT_PRDT_CD": self._config.acnt_prdt_cd,
@@ -54,7 +86,10 @@ class OrderClient:
             raise RuntimeError(f"잔고 조회 실패: {data.get('msg1')}")
 
         return {
-            item["pdno"]: int(item.get("hldg_qty", "0"))
+            item["pdno"]: {
+                "qty":       int(item.get("hldg_qty", "0")),
+                "avg_price": item.get("pchs_avg_pric", "0"),
+            }
             for item in data.get("output1", [])
             if item.get("pdno") and int(item.get("hldg_qty", "0")) > 0
         }
@@ -93,6 +128,44 @@ class OrderClient:
             }
         return result
 
+    def get_execution(self, stock_code: str, order_no: str, token: str,
+                      retries: int = 5, delay: float = 1.0) -> Optional[dict]:
+        """주문번호로 체결 내역 조회. 미체결이면 None 반환"""
+        tr_id = "VTTC8001R" if self._config.mode == "mock" else "TTTC8001R"
+        today = datetime.date.today().strftime("%Y%m%d")
+        params = {
+            "CANO": self._config.cano,
+            "ACNT_PRDT_CD": self._config.acnt_prdt_cd,
+            "INQR_STRT_DT": today,
+            "INQR_END_DT": today,
+            "SLL_BUY_DVSN_CD": "02",   # 매수
+            "INQR_DVSN": "00",
+            "PDNO": stock_code,
+            "CCLD_DVSN": "01",          # 체결만
+            "ORD_GNO_BRNO": "",
+            "ODNO": order_no,
+            "INQR_DVSN_3": "00",
+            "INQR_DVSN_1": "",
+            "CTX_AREA_FK100": "",
+            "CTX_AREA_NK100": "",
+        }
+        url = f"{self._config.base_url}{_EXECUTION_ENDPOINT}"
+        for attempt in range(retries):
+            time.sleep(delay)
+            resp = requests.get(url, headers=self._headers(tr_id, token), params=params, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            items = data.get("output1", [])
+            if items:
+                item = items[0]
+                return {
+                    "exec_price": item.get("avg_prvs") or item.get("ccld_avg_pric", "0"),
+                    "exec_qty":   item.get("tot_ccld_qty", "0"),
+                    "exec_time":  item.get("ord_tmd", ""),
+                }
+            logger.debug(f"체결 대기 중... ({attempt + 1}/{retries})")
+        return None
+
     def _fetch_overseas_price(self, symbol: str, exchange: str, token: str) -> str:
         params = {"AUTH": "", "EXCD": exchange, "SYMB": symbol}
         headers = self._headers("HHDFS00000300", token)
@@ -105,6 +178,11 @@ class OrderClient:
         return data["output"]["last"]
 
     def _place_overseas_order(self, side: str, symbol: str, exchange: str, quantity: int, price: str, tr_id: str, token: str) -> dict:
+        # KIS VTS(모의투자)는 해외주식 주문을 미지원 — mock 모드에서는 로컬 시뮬레이션
+        if self._config.mode == "mock":
+            logger.info(f"[mock] 해외 {side} 시뮬레이션 | {exchange}:{symbol} {quantity}주 @ {price}")
+            return {"rt_cd": "0", "msg1": "모의 주문 완료", "output": {"ODNO": "MOCK0000001"}}
+
         body = {
             "CANO": self._config.cano,
             "ACNT_PRDT_CD": self._config.acnt_prdt_cd,

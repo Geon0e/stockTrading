@@ -1,10 +1,13 @@
 import logging
 import time
+import datetime
 import requests
 from typing import List, Dict
 from config import Config
 from strategy.base_strategy import BaseStrategy
 from screener.stock_list import fetch_all_stock_codes
+from screener.us_stock_list import fetch_us_stocks
+from screener.name_lookup import get_stock_name
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +41,17 @@ class StockScreener:
                     code, self._strategy.required_data_points, token
                 )
                 if self._strategy.should_buy(prices):
-                    results.append({"code": code, "price": prices[-1]})
-                    logger.info(f"골든크로스 감지: {code} | 현재가: {prices[-1]}")
+                    name = get_stock_name(code)
+                    results.append({
+                        "code": code,
+                        "name": name,
+                        "price": prices[-1],
+                        "signal_type": "골든크로스",
+                        "signal_detected_at": datetime.datetime.now().isoformat(),
+                        "market": "KR",
+                    })
+                    label = f"{code}({name})" if name else code
+                    logger.info(f"골든크로스 감지: {label} | 현재가: {prices[-1]}")
                 if i % 200 == 0:
                     logger.info(f"진행: {i}/{total} | 감지: {len(results)}개")
                 time.sleep(0.05)  # API rate limit 방지
@@ -47,6 +59,46 @@ class StockScreener:
                 logger.debug(f"{code} 스킵: {e}")
 
         logger.info(f"스크리닝 완료: {total}개 중 {len(results)}개 골든크로스")
+        return results
+
+    def scan_us(self, token: str, mode: str = "nasdaq100") -> List[Dict]:
+        """미국 주식 골든크로스 스캔.
+
+        mode: nasdaq100 | sp500 | all
+        """
+        stocks = fetch_us_stocks(mode)
+        total  = len(stocks)
+        label  = {"nasdaq100": "나스닥100", "sp500": "S&P500", "all": "미국 전종목"}.get(mode, mode)
+        logger.info(f"{label} 스크리닝 시작: {total}개 종목")
+
+        results = []
+        for i, stock in enumerate(stocks, 1):
+            symbol   = stock["symbol"]
+            exchange = stock["exchange"]
+            try:
+                prices = self._price_client.fetch_overseas_closing_prices(
+                    symbol, exchange, self._strategy.required_data_points, token
+                )
+                if self._strategy.should_buy(prices):
+                    name = get_stock_name(symbol)
+                    results.append({
+                        "code": symbol,
+                        "name": name,
+                        "price": prices[-1],
+                        "exchange": exchange,
+                        "signal_type": "골든크로스",
+                        "signal_detected_at": datetime.datetime.now().isoformat(),
+                        "market": "US",
+                    })
+                    label = f"{symbol}({name})" if name else symbol
+                    logger.info(f"골든크로스 감지: {label} ({exchange}) | 현재가: {prices[-1]}")
+                time.sleep(0.1)
+            except Exception as e:
+                logger.debug(f"{symbol} 스킵: {e}")
+            if i % 100 == 0:
+                logger.info(f"진행: {i}/{total} | 감지: {len(results)}개")
+
+        logger.info(f"{label} 스크리닝 완료: {total}개 중 {len(results)}개 골든크로스")
         return results
 
     def _fetch_volume_top(self, token: str, top_n: int) -> List[str]:
