@@ -87,6 +87,22 @@ def notify_sell(bot: TelegramBot, code: str, quantity: int, price) -> None:
         logger.error(f"텔레그램 매도 알림 전송 실패: {code}")
 
 
+def notify_take_profit_sell(bot: TelegramBot, code: str, quantity: int, profit_rate) -> None:
+    """익절 매도 알림"""
+    msg = (
+        f"💰 <b>익절 매도 체결</b>\n"
+        f"{'─'*20}\n"
+        f"종목코드 : <code>{code}</code>\n"
+        f"수   량  : {quantity}주\n"
+        f"수익률   : +{profit_rate}%\n"
+        f"신호     : 수익률 5% 이상 익절\n"
+        f"{'─'*20}\n"
+        f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    )
+    if not bot.send(msg):
+        logger.error(f"텔레그램 익절 알림 전송 실패: {code}")
+
+
 def notify_scan_result(bot: TelegramBot, results: list) -> None:
     """골든크로스 스캔 결과 알림"""
     if not results:

@@ -13,7 +13,8 @@ class TradeLogger:
         _LOG_DIR.mkdir(exist_ok=True)
         self._log_file = _LOG_DIR / f"trades_{mode}.jsonl"
 
-    def log(self, action: str, stock_code: str, quantity: int, result: dict) -> None:
+    def log(self, action: str, stock_code: str, quantity: int, result: dict,
+            profit_rate=None) -> None:
         entry = {
             "timestamp": datetime.datetime.now().isoformat(),
             "mode": self._mode,
@@ -24,6 +25,9 @@ class TradeLogger:
             "rt_cd": result.get("rt_cd"),
             "message": result.get("msg1"),
         }
+        if profit_rate is not None:
+            entry["profit_rate_pct"] = float(profit_rate)
         with open(self._log_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        logger.info(f"[감사로그] {action} | {stock_code} {quantity}주 기록 완료")
+        rate_str = f" | 수익률 {profit_rate:+}%" if profit_rate is not None else ""
+        logger.info(f"[감사로그] {action} | {stock_code} {quantity}주 기록 완료{rate_str}")

@@ -1,5 +1,6 @@
 import logging
 import requests
+from decimal import Decimal
 from typing import Dict
 from config import Config
 
@@ -48,6 +49,40 @@ class OrderClient:
             for item in data.get("output1", [])
             if item.get("pdno") and int(item.get("hldg_qty", "0")) > 0
         }
+
+    def get_holdings_detail(self, token: str) -> Dict[str, dict]:
+        """보유 종목 상세 조회. {종목코드: {"qty": int, "profit_rate": Decimal}} 형태로 반환"""
+        params = {
+            "CANO": self._config.cano,
+            "ACNT_PRDT_CD": self._config.acnt_prdt_cd,
+            "AFHR_FLPR_YN": "N",
+            "OFL_YN": "",
+            "INQR_DVSN": "02",
+            "UNPR_DVSN": "01",
+            "FUND_STTL_ICLD_YN": "N",
+            "FNCG_AMT_AUTO_RDPT_YN": "N",
+            "PRCS_DVSN": "01",
+            "CTX_AREA_FK100": "",
+            "CTX_AREA_NK100": "",
+        }
+        url = f"{self._config.base_url}{_BALANCE_ENDPOINT}"
+        resp = requests.get(url, headers=self._headers(self._config.tr_balance, token), params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        if data.get("rt_cd") != "0":
+            raise RuntimeError(f"잔고 조회 실패: {data.get('msg1')}")
+
+        result = {}
+        for item in data.get("output1", []):
+            qty = int(item.get("hldg_qty", "0"))
+            if not item.get("pdno") or qty <= 0:
+                continue
+            result[item["pdno"]] = {
+                "qty": qty,
+                "profit_rate": Decimal(item.get("evlu_pfls_rt", "0")),
+            }
+        return result
 
     def _place_order(self, side: str, stock_code: str, quantity: int, tr_id: str, token: str) -> dict:
         body = {

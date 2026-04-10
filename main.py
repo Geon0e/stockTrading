@@ -13,10 +13,12 @@ from notifications.kakao_notifier import from_env as kakao_from_env
 from notifications.kakao_notifier import notify_buy as kakao_notify_buy
 from notifications.kakao_notifier import notify_sell as kakao_notify_sell
 from notifications.kakao_notifier import notify_scan_result as kakao_notify_scan
+from notifications.kakao_notifier import notify_take_profit_sell as kakao_notify_take_profit_sell
 from notifications.telegram_notifier import from_env as telegram_from_env
 from notifications.telegram_notifier import notify_buy as tg_notify_buy
 from notifications.telegram_notifier import notify_sell as tg_notify_sell
 from notifications.telegram_notifier import notify_scan_result as tg_notify_scan
+from notifications.telegram_notifier import notify_take_profit_sell as tg_notify_take_profit_sell
 
 logging.basicConfig(
     level=logging.INFO,
@@ -50,11 +52,41 @@ def _notify_sell(ctx, code, quantity, price):
         tg_notify_sell(ctx["telegram_bot"], code, quantity, price)
 
 
+def _notify_take_profit_sell(ctx, code, quantity, profit_rate):
+    if ctx.get("kakao_bot"):
+        kakao_notify_take_profit_sell(ctx["kakao_bot"], code, quantity, profit_rate)
+    if ctx.get("telegram_bot"):
+        tg_notify_take_profit_sell(ctx["telegram_bot"], code, quantity, profit_rate)
+
+
 def _notify_scan(ctx, results):
     if ctx.get("kakao_bot"):
         kakao_notify_scan(ctx["kakao_bot"], results)
     if ctx.get("telegram_bot"):
         tg_notify_scan(ctx["telegram_bot"], results)
+
+
+def run_take_profit_cycle(ctx: dict) -> None:
+    """1분마다 실행: 수익률 5% 이상 보유 종목 익절 매도"""
+    if not is_market_open():
+        return
+
+    config = ctx["config"]
+    try:
+        token = ctx["token_manager"].get_valid_token()
+        holdings_detail = ctx["order_client"].get_holdings_detail(token)
+
+        for code, detail in list(holdings_detail.items()):
+            profit_rate = detail["profit_rate"]
+            if profit_rate >= config.take_profit_rate:
+                qty = detail["qty"]
+                result = ctx["order_client"].sell(code, qty, token)
+                ctx["trade_logger"].log("SELL", code, qty, result, profit_rate=profit_rate)
+                _notify_take_profit_sell(ctx, code, qty, profit_rate)
+                logger.info(f"익절 매도: {code} | 수익률 {profit_rate}%")
+
+    except Exception as e:
+        logger.error(f"익절 사이클 오류: {e}", exc_info=True)
 
 
 def run_cycle(ctx: dict) -> None:
@@ -64,8 +96,9 @@ def run_cycle(ctx: dict) -> None:
 
     config = ctx["config"]
     try:
-        token    = ctx["token_manager"].get_valid_token()
-        holdings = ctx["order_client"].get_holdings(token)
+        token           = ctx["token_manager"].get_valid_token()
+        holdings_detail = ctx["order_client"].get_holdings_detail(token)
+        holdings        = {code: d["qty"] for code, d in holdings_detail.items()}
 
         # 1. 보유 종목 데드크로스 체크 → 매도
         for stock_code, qty in list(holdings.items()):
@@ -73,11 +106,12 @@ def run_cycle(ctx: dict) -> None:
                 stock_code, ctx["strategy"].required_data_points, token
             )
             if ctx["strategy"].should_sell(prices):
+                profit_rate = holdings_detail[stock_code]["profit_rate"]
                 result = ctx["order_client"].sell(stock_code, qty, token)
-                ctx["trade_logger"].log("SELL", stock_code, qty, result)
+                ctx["trade_logger"].log("SELL", stock_code, qty, result, profit_rate=profit_rate)
                 del holdings[stock_code]
                 _notify_sell(ctx, stock_code, qty, prices[-1])
-                logger.info(f"매도 완료: {stock_code}")
+                logger.info(f"매도 완료: {stock_code} | 수익률 {profit_rate:+}%")
 
         # 2. 빈 슬롯 있으면 골든크로스 스캔 → 매수
         if len(holdings) < config.max_positions:
@@ -135,6 +169,7 @@ def main() -> None:
     }
 
     schedule.every(config.check_interval_minutes).minutes.do(run_cycle, ctx)
+    schedule.every(1).minutes.do(run_take_profit_cycle, ctx)
     run_cycle(ctx)
 
     while True:

@@ -38,6 +38,7 @@ class Config:
     ma_long_period: int
     scan_all_stocks: bool   # True: 전종목, False: 거래량 상위만
     max_positions: int      # 최대 동시 보유 종목 수
+    take_profit_rate: float # 익절 수익률 기준 (%)
 
 
 def load_config() -> Config:
@@ -74,5 +75,6 @@ def load_config() -> Config:
         ma_long_period=int(os.getenv("MA_LONG_PERIOD", "20")),
         scan_all_stocks=os.getenv("SCAN_ALL_STOCKS", "false").lower() == "true",
         max_positions=int(os.getenv("MAX_POSITIONS", "5")),
+        take_profit_rate=float(os.getenv("TAKE_PROFIT_RATE", "5.0")),
         **env,
     )
