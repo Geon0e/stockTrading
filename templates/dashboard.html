@@ -187,8 +187,10 @@ code { color: #60a5fa; font-size: 11px; }
 ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
 
 /* ── Mobile ── */
+.mob-tabs { display: none; }
+
 @media (max-width: 768px) {
-  body { height: auto; overflow: auto; }
+  body { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
 
   header {
     flex-wrap: wrap;
@@ -206,18 +208,39 @@ code { color: #60a5fa; font-size: 11px; }
     flex-wrap: wrap;
   }
   .stat-val { font-size: 16px; }
-  #statSignals { font-size: 10px; }
+  #statSignals { display: none; }
+
+  /* 모바일 탭 바 */
+  .mob-tabs {
+    display: flex;
+    background: #141414;
+    border-bottom: 1px solid #252525;
+    flex-shrink: 0;
+  }
+  .mob-tab {
+    flex: 1; padding: 10px; font-size: 12px; font-weight: bold;
+    font-family: inherit; cursor: pointer; border: none;
+    background: #141414; color: #555;
+    border-bottom: 2px solid transparent;
+  }
+  .mob-tab.active { color: #e0e0e0; border-bottom-color: #3b82f6; background: #1a1a1a; }
 
   .body {
+    flex: 1;
     flex-direction: column;
-    height: auto;
-    overflow: visible;
+    overflow: hidden;
     background: #0a0a0a;
   }
-  .pane-left  { width: 100%; height: 260px; flex-shrink: 0; }
-  .pane-right { flex: none; height: auto; min-height: 300px; }
+  /* 데스크톱 패널 헤더 숨김 */
+  .pane-left .pane-hd,
+  .pane-right .pane-hd { display: none; }
 
-  .tbl-wrap { overflow-x: auto; overflow-y: auto; max-height: 50vh; }
+  .pane-left  { width: 100%; flex: 1; display: none; }
+  .pane-right { width: 100%; flex: 1; display: none; }
+  .pane-left.mob-active  { display: flex; }
+  .pane-right.mob-active { display: flex; }
+
+  .tbl-wrap { overflow-x: auto; overflow-y: auto; flex: 1; }
   table { font-size: 11px; min-width: 480px; }
   thead th { padding: 6px 6px; }
   td { padding: 5px 6px; }
@@ -271,6 +294,12 @@ code { color: #60a5fa; font-size: 11px; }
       <option value="real">Real</option>
     </select>
   </div>
+</div>
+
+<!-- 모바일 전용 탭 바 -->
+<div class="mob-tabs">
+  <button class="mob-tab active" id="mobTabLog"    onclick="switchMobTab('log')">📋 로그</button>
+  <button class="mob-tab"        id="mobTabTrades" onclick="switchMobTab('trades')">💼 거래내역</button>
 </div>
 
 <div class="body">
@@ -524,7 +553,38 @@ function makeEventSource(mode) {
   es.onerror   = () => appendLog(mode, `[${mode.toUpperCase()}] 스트림 연결 끊김 — 재연결 중...`);
 }
 
+// ── 모바일 탭 ──────────────────────────────────────
+function switchMobTab(tab) {
+  const isMobile = window.innerWidth <= 768;
+  if (!isMobile) return;
+  const logPane    = document.querySelector('.pane-left');
+  const tradesPane = document.querySelector('.pane-right');
+  const tabLog     = document.getElementById('mobTabLog');
+  const tabTrades  = document.getElementById('mobTabTrades');
+  if (tab === 'log') {
+    logPane.classList.add('mob-active');
+    tradesPane.classList.remove('mob-active');
+    tabLog.classList.add('active');
+    tabTrades.classList.remove('active');
+  } else {
+    tradesPane.classList.add('mob-active');
+    logPane.classList.remove('mob-active');
+    tabTrades.classList.add('active');
+    tabLog.classList.remove('active');
+    loadTrades();
+  }
+}
+
+function initMobileLayout() {
+  if (window.innerWidth <= 768) {
+    document.querySelector('.pane-left').classList.add('mob-active');
+    document.querySelector('.pane-right').classList.remove('mob-active');
+  }
+}
+
 // ── Init ──────────────────────────────────────────
+initMobileLayout();
+window.addEventListener('resize', initMobileLayout);
 makeEventSource('mock');
 makeEventSource('real');
 loadStatus();
