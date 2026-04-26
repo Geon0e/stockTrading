@@ -29,17 +29,19 @@ header {
 .logo { font-size: 16px; font-weight: bold; color: #fff; letter-spacing: -0.5px; }
 .dot {
   width: 9px; height: 9px; border-radius: 50%;
-  flex-shrink: 0;
+  flex-shrink: 0; display: inline-block;
 }
 .dot.on  { background: #22c55e; box-shadow: 0 0 7px #22c55e88; }
-.dot.off { background: #555; }
-#statusText { font-size: 13px; color: #aaa; }
-.badge {
-  padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: bold;
+.dot.off { background: #444; }
+.mode-grp {
+  display: flex; align-items: center; gap: 5px;
+  background: #1a1a1a; border: 1px solid #2a2a2a;
+  padding: 3px 10px; border-radius: 5px;
 }
-.badge.mock { background: #4c1d95; color: #c4b5fd; }
-.badge.real { background: #14532d; color: #86efac; }
-.pid  { font-size: 11px; color: #444; }
+.mode-lbl { font-size: 11px; font-weight: bold; color: #888; }
+.mode-lbl.mock-lbl { color: #a78bfa; }
+.mode-lbl.real-lbl { color: #4ade80; }
+.pid  { font-size: 10px; color: #444; }
 .ts   { font-size: 11px; color: #444; }
 
 /* ── Bot control buttons ── */
@@ -189,16 +191,22 @@ code { color: #60a5fa; font-size: 11px; }
 
 <header>
   <span class="logo">📈 StockTrading</span>
-  <span class="dot off" id="dot"></span>
-  <span id="statusText">연결 중...</span>
-  <span class="badge" id="modeBadge"></span>
-  <span class="pid" id="pidText"></span>
-  <span class="ts" id="lastTs"></span>
+  <span class="mode-grp">
+    <span class="dot off" id="dotMock"></span>
+    <span class="mode-lbl mock-lbl">MOCK</span>
+    <span class="pid" id="pidMock"></span>
+  </span>
+  <span class="mode-grp">
+    <span class="dot off" id="dotReal"></span>
+    <span class="mode-lbl real-lbl">REAL</span>
+    <span class="pid" id="pidReal"></span>
+  </span>
   <div class="bot-controls">
     <button class="btn-bot btn-deploy" id="btnDeploy" onclick="botDeploy()">🚀 배포</button>
     <button class="btn-bot btn-start" id="btnStart" onclick="botStart()">▶ 시작</button>
     <button class="btn-bot btn-stop"  id="btnStop"  onclick="botStop()">■ 정지</button>
   </div>
+  <span class="ts" id="lastTs" style="margin-left:8px"></span>
 </header>
 
 <div class="stats">
@@ -271,210 +279,203 @@ code { color: #60a5fa; font-size: 11px; }
 </div>
 
 <script>
-let autoScroll = true;
-let currentMode = 'mock';
+let autoScroll  = true;
+let activeLogTab = 'mock';
+let currentMode  = 'mock';   // 거래내역 탭 모드
+let spinning     = { mock: false, real: false };
+let botStatus    = { mock: { running: false, pid: null }, real: { running: false, pid: null } };
 
+// ── 자동스크롤 ─────────────────────────────────────
 function toggleAS() {
   autoScroll = !autoScroll;
   document.getElementById('asBtn').textContent = '자동스크롤 ' + (autoScroll ? 'ON' : 'OFF');
 }
 
+// ── 거래내역 모드 전환 ──────────────────────────────
 function onModeChange(v) {
   currentMode = v;
   loadTrades();
   loadSummary();
 }
 
-// ── Bot control ──────────────────────────────────
-function setButtons(running, spinning) {
+// ── 버튼 상태 (현재 활성 탭 기준) ──────────────────
+function setButtons() {
+  const m  = activeLogTab;
+  const run = botStatus[m].running;
+  const sp  = spinning[m];
   const bs = document.getElementById('btnStart');
   const bx = document.getElementById('btnStop');
   const bd = document.getElementById('btnDeploy');
-  bs.disabled = running || spinning;
-  bx.disabled = !running || spinning;
-  bd.disabled = spinning;
-  bs.classList.toggle('btn-spin', spinning && !running);
-  bx.classList.toggle('btn-spin', spinning && running);
-  bd.classList.toggle('btn-spin', spinning);
+  bs.disabled = run || sp;
+  bx.disabled = !run || sp;
+  bd.disabled = sp;
+  bs.classList.toggle('btn-spin', sp && !run);
+  bx.classList.toggle('btn-spin', sp && run);
+  bd.classList.toggle('btn-spin', sp);
+  bd.textContent = sp ? '🚀 배포 중' : '🚀 배포';
 }
 
-function botDeploy() {
-  setButtons(false, true);
-  document.getElementById('btnDeploy').textContent = '🚀 배포 중';
-  appendLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  appendLog('[deploy] git pull → 재시작 시작...');
-  fetch('/api/bot/deploy', { method: 'POST' })
-    .then(r => r.json())
-    .then(d => {
-      (d.lines || []).forEach(l => appendLog(l));
-      appendLog(d.ok ? '✅ 배포 완료' : '❌ 배포 실패: ' + (d.error || ''));
-      appendLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      document.getElementById('btnDeploy').textContent = '🚀 배포';
-      loadStatus();
-      loadTrades();
-      loadSummary();
-    })
-    .catch(e => {
-      appendLog('[deploy] 네트워크 오류: ' + e);
-      document.getElementById('btnDeploy').textContent = '🚀 배포';
-      setButtons(false, false);
-    });
+// ── 봇 제어 (active tab 모드로) ────────────────────
+function _post(url, mode) {
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode }),
+  }).then(r => r.json());
 }
 
 function botStart() {
-  setButtons(false, true);
-  appendLog('[대시보드] 봇 시작 요청...');
-  fetch('/api/bot/start', { method: 'POST' })
-    .then(r => r.json())
+  const mode = activeLogTab;
+  spinning[mode] = true; setButtons();
+  appendLog(mode, `[대시보드] ${mode.toUpperCase()} 봇 시작 요청...`);
+  _post('/api/bot/start', mode)
     .then(d => {
-      appendLog(d.ok ? `[대시보드] 봇 시작됨 (PID ${d.pid})` : `[대시보드] 시작 실패: ${d.error||''}`);
-      loadStatus();
+      appendLog(mode, d.ok ? `[대시보드] ${mode.toUpperCase()} 봇 시작됨 (PID ${d.pid})` : `[대시보드] 시작 실패: ${d.error||''}`);
+      spinning[mode] = false; loadStatus();
     })
-    .catch(e => { appendLog('[대시보드] 오류: ' + e); setButtons(false, false); });
+    .catch(e => { appendLog(mode, '오류: ' + e); spinning[mode] = false; setButtons(); });
 }
 
 function botStop() {
-  setButtons(true, true);
-  appendLog('[대시보드] 봇 정지 요청...');
-  fetch('/api/bot/stop', { method: 'POST' })
-    .then(r => r.json())
+  const mode = activeLogTab;
+  spinning[mode] = true; setButtons();
+  appendLog(mode, `[대시보드] ${mode.toUpperCase()} 봇 정지 요청...`);
+  _post('/api/bot/stop', mode)
     .then(d => {
-      appendLog(d.ok ? '[대시보드] 봇 정지됨' : `[대시보드] 정지 실패: ${d.error||''}`);
-      loadStatus();
+      appendLog(mode, d.ok ? `[대시보드] ${mode.toUpperCase()} 봇 정지됨` : `[대시보드] 정지 실패: ${d.error||''}`);
+      spinning[mode] = false; loadStatus();
     })
-    .catch(e => { appendLog('[대시보드] 오류: ' + e); setButtons(true, false); });
+    .catch(e => { appendLog(mode, '오류: ' + e); spinning[mode] = false; setButtons(); });
 }
 
-// ── Status ──────────────────────────────────────
+function botDeploy() {
+  const mode = activeLogTab;
+  spinning[mode] = true; setButtons();
+  appendLog(mode, '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  appendLog(mode, `[deploy] ${mode.toUpperCase()} — git pull → 재시작...`);
+  _post('/api/bot/deploy', mode)
+    .then(d => {
+      (d.lines || []).forEach(l => appendLog(mode, l));
+      appendLog(mode, d.ok ? `✅ ${mode.toUpperCase()} 배포 완료` : `❌ 배포 실패: ${d.error||''}`);
+      appendLog(mode, '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      spinning[mode] = false; loadStatus(); loadTrades(); loadSummary();
+    })
+    .catch(e => { appendLog(mode, '오류: ' + e); spinning[mode] = false; setButtons(); });
+}
+
+// ── 상태 ──────────────────────────────────────────
 function loadStatus() {
   fetch('/api/status').then(r => r.json()).then(d => {
-    const dot = document.getElementById('dot');
-    dot.className = 'dot ' + (d.running ? 'on' : 'off');
-    document.getElementById('statusText').textContent = d.running ? '실행 중' : '정지됨';
-    const b = document.getElementById('modeBadge');
-    const bm = d.bot_mode || '';
-    b.textContent = bm ? bm.toUpperCase() : '';
-    b.className = 'badge ' + (bm || 'mock');
-    b.style.display = bm ? '' : 'none';
-    document.getElementById('pidText').textContent = d.pid ? 'PID ' + d.pid : '';
+    botStatus = d;
+    ['mock','real'].forEach(m => {
+      const on = d[m].running;
+      const pid = d[m].pid;
+      document.getElementById('dot' + m[0].toUpperCase() + m.slice(1)).className = 'dot ' + (on ? 'on' : 'off');
+      document.getElementById('pid' + m[0].toUpperCase() + m.slice(1)).textContent = pid ? 'PID ' + pid : '';
+      // 로그 탭 dot
+      const tab = document.getElementById('tab' + m[0].toUpperCase() + m.slice(1));
+      const dot = tab.querySelector('.tab-dot');
+      if (m === 'mock') {
+        dot.style.background  = on ? '#a78bfa' : '#333';
+        dot.style.boxShadow   = on ? '0 0 5px #a78bfa88' : 'none';
+      } else {
+        dot.style.background  = on ? '#22c55e' : '#333';
+        dot.style.boxShadow   = on ? '0 0 5px #22c55e88' : 'none';
+      }
+    });
     document.getElementById('lastTs').textContent = new Date().toLocaleTimeString('ko-KR');
-    setButtons(d.running, false);
-
-    // 탭별 실행 상태 표시
-    const tMock = document.getElementById('tabMock');
-    const tReal = document.getElementById('tabReal');
-    const mockOn = d.running && d.bot_mode === 'mock';
-    const realOn = d.running && d.bot_mode === 'real';
-    tMock.querySelector('.tab-dot').style.background = mockOn ? '#a78bfa' : '#333';
-    tMock.querySelector('.tab-dot').style.boxShadow  = mockOn ? '0 0 5px #a78bfa88' : 'none';
-    tReal.querySelector('.tab-dot').style.background = realOn ? '#22c55e' : '#333';
-    tReal.querySelector('.tab-dot').style.boxShadow  = realOn ? '0 0 5px #22c55e88' : 'none';
+    setButtons();
   }).catch(() => {});
 }
 
-// ── Summary ──────────────────────────────────────
+// ── 통계 ──────────────────────────────────────────
 function loadSummary() {
   fetch('/api/trades/summary?mode=' + currentMode).then(r => r.json()).then(d => {
     document.getElementById('stTotal').textContent = d.total;
     document.getElementById('stBuys').textContent  = d.buys;
     document.getElementById('stSells').textContent = d.sells;
     const sigs = Object.entries(d.by_signal)
-      .sort((a, b) => b[1] - a[1])
-      .map(([k, v]) => k + ' ' + v + '건')
-      .join('  ·  ');
+      .sort((a,b) => b[1]-a[1])
+      .map(([k,v]) => k+' '+v+'건').join('  ·  ');
     document.getElementById('statSignals').textContent = sigs || '—';
   }).catch(() => {});
 }
 
-// ── Trades ──────────────────────────────────────
+// ── 거래내역 ───────────────────────────────────────
 function fmtTime(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
-  const mo = String(d.getMonth()+1).padStart(2,'0');
-  const dy = String(d.getDate()).padStart(2,'0');
-  const hh = String(d.getHours()).padStart(2,'0');
-  const mm = String(d.getMinutes()).padStart(2,'0');
-  return mo+'/'+dy+' '+hh+':'+mm;
+  return String(d.getMonth()+1).padStart(2,'0') + '/' +
+         String(d.getDate()).padStart(2,'0') + ' ' +
+         String(d.getHours()).padStart(2,'0') + ':' +
+         String(d.getMinutes()).padStart(2,'0');
 }
-
 function fmtPrice(p, code) {
   if (!p) return '—';
-  const isUS = /^[A-Z]{1,5}$/.test(code);
   const n = parseFloat(p);
   if (isNaN(n)) return p;
-  return isUS ? '$' + n.toFixed(2) : n.toLocaleString('ko-KR') + '원';
+  return /^[A-Z]{1,5}$/.test(code) ? '$'+n.toFixed(2) : n.toLocaleString('ko-KR')+'원';
 }
-
 function sigClass(s) {
   if (!s) return 'sg-def';
-  if (s.includes('골든') || s.includes('GC')) return 'sg-gc';
+  if (s.includes('골든')) return 'sg-gc';
   if (s.includes('손절')) return 'sg-sl';
   if (s.includes('익절')) return 'sg-tp';
-  if (s.includes('데드') || s.includes('DC')) return 'sg-dc';
+  if (s.includes('데드')) return 'sg-dc';
   return 'sg-def';
 }
-
 function loadTrades() {
   fetch('/api/trades?mode=' + currentMode).then(r => r.json()).then(records => {
     const tb = document.getElementById('tBody');
     tb.innerHTML = '';
     records.forEach(r => {
       const isBuy = r.action === 'BUY';
-      const ac = isBuy ? 'ab' : 'as';
-      const icon = isBuy ? '▲' : '▼';
       const nameMain = r.stock_name
         ? `<span style="font-size:13px;color:#e0e0e0;font-weight:bold">${r.stock_name}</span>`
         : `<span style="font-size:13px;color:#60a5fa;font-weight:bold">${r.stock_code}</span>`;
-      const codeSub = r.stock_name
-        ? `<br><span style="color:#444;font-size:10px">${r.stock_code}</span>` : '';
-      const profitBadge = r.profit_rate_pct != null
-        ? `<span style="color:${r.profit_rate_pct>=0?'#22c55e':'#ef4444'};font-size:10px;margin-left:4px">`
-          + (r.profit_rate_pct >= 0 ? '+' : '') + r.profit_rate_pct.toFixed(2) + '%</span>'
-        : '';
+      const codeSub = r.stock_name ? `<br><span style="color:#444;font-size:10px">${r.stock_code}</span>` : '';
+      const profit  = r.profit_rate_pct != null
+        ? `<span style="color:${r.profit_rate_pct>=0?'#22c55e':'#ef4444'};font-size:10px;margin-left:4px">${r.profit_rate_pct>=0?'+':''}${r.profit_rate_pct.toFixed(2)}%</span>` : '';
       const tr = document.createElement('tr');
       tr.innerHTML =
         `<td style="color:#444">${fmtTime(r.timestamp)}</td>` +
-        `<td class="${ac}">${icon} ${r.action}</td>` +
+        `<td class="${isBuy?'ab':'as'}">${isBuy?'▲':'▼'} ${r.action}</td>` +
         `<td>${nameMain}${codeSub}</td>` +
         `<td>${r.quantity}</td>` +
-        `<td>${fmtPrice(r.exec_price, r.stock_code)}${profitBadge}</td>` +
+        `<td>${fmtPrice(r.exec_price, r.stock_code)}${profit}</td>` +
         `<td><span class="sig ${sigClass(r.signal_type)}">${r.signal_type||'—'}</span></td>`;
       tb.appendChild(tr);
     });
   }).catch(() => {});
 }
 
-// ── Log SSE ──────────────────────────────────────
-let activeLogTab = 'mock';
-
+// ── 로그 탭 ───────────────────────────────────────
 function switchLogTab(mode) {
   activeLogTab = mode;
-  document.getElementById('logMock').style.display = mode === 'mock' ? '' : 'none';
-  document.getElementById('logReal').style.display = mode === 'real' ? '' : 'none';
-  const tMock = document.getElementById('tabMock');
-  const tReal = document.getElementById('tabReal');
-  tMock.className = 'log-tab' + (mode === 'mock' ? ' active mock-active' : '');
-  tReal.className = 'log-tab' + (mode === 'real' ? ' active real-active' : '');
+  document.getElementById('logMock').style.display = mode==='mock' ? '' : 'none';
+  document.getElementById('logReal').style.display = mode==='real' ? '' : 'none';
+  document.getElementById('tabMock').className = 'log-tab' + (mode==='mock' ? ' active mock-active' : '');
+  document.getElementById('tabReal').className = 'log-tab' + (mode==='real' ? ' active real-active' : '');
+  setButtons();
   if (autoScroll) {
-    const wrap = document.getElementById(mode === 'mock' ? 'logMock' : 'logReal');
-    wrap.scrollTop = wrap.scrollHeight;
+    const w = document.getElementById(mode==='mock' ? 'logMock' : 'logReal');
+    w.scrollTop = w.scrollHeight;
   }
 }
 
 function appendLog(mode, line) {
-  const wrap = document.getElementById(mode === 'mock' ? 'logMock' : 'logReal');
+  const wrap = document.getElementById(mode==='mock' ? 'logMock' : 'logReal');
   const d = document.createElement('div');
   d.className = 'll';
   let lvl = 'INFO';
-  if (line.includes('[ERROR]'))   lvl = 'ERROR';
+  if (line.includes('[ERROR]')) lvl = 'ERROR';
   else if (line.includes('[WARNING]') || line.includes('[WARN]')) lvl = 'WARNING';
-  else if (line.includes('[DEBUG]'))  lvl = 'DEBUG';
+  else if (line.includes('[DEBUG]')) lvl = 'DEBUG';
   d.classList.add(lvl);
-  const html = line
+  d.innerHTML = line
     .replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d+)/, '<span class="ts2">$1</span>')
     .replace(/(매수 완료|체결 완료|골든크로스|BUY)/g, '<span class="kw-b">$1</span>')
     .replace(/(매도 완료|손절 매도|익절 매도|SELL)/g, '<span class="kw-s">$1</span>');
-  d.innerHTML = html;
   wrap.appendChild(d);
   while (wrap.children.length > 600) wrap.removeChild(wrap.firstChild);
   if (autoScroll && activeLogTab === mode) wrap.scrollTop = wrap.scrollHeight;
@@ -484,13 +485,11 @@ function makeEventSource(mode) {
   const es = new EventSource(`/stream/logs?mode=${mode}`);
   es.onmessage = e => { try { appendLog(mode, JSON.parse(e.data)); } catch(_) {} };
   es.onerror   = () => appendLog(mode, `[${mode.toUpperCase()}] 스트림 연결 끊김 — 재연결 중...`);
-  return es;
 }
 
+// ── Init ──────────────────────────────────────────
 makeEventSource('mock');
 makeEventSource('real');
-
-// ── Init ──────────────────────────────────────────
 loadStatus();
 loadTrades();
 loadSummary();

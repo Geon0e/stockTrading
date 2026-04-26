@@ -26,19 +26,10 @@ def _load_trades(mode: str) -> list:
     return records
 
 
-@app.route("/")
-def index():
-    return render_template("dashboard.html")
-
-
-@app.route("/api/status")
-def api_status():
-    pid_file  = _BASE / ".bot.pid"
-    mode_file = _BASE / ".bot.mode"
+def _bot_status(mode: str) -> dict:
+    pid_file = _BASE / f".bot.{mode}.pid"
     running = False
     pid = None
-    bot_mode = None
-
     if pid_file.exists():
         try:
             pid = int(pid_file.read_text().strip())
@@ -48,38 +39,86 @@ def api_status():
             pid_file.unlink(missing_ok=True)
         except PermissionError:
             running = True
+    return {"running": running, "pid": pid}
 
-    if running and mode_file.exists():
-        bot_mode = mode_file.read_text().strip()
-    elif not running:
-        mode_file.unlink(missing_ok=True)
 
-    return jsonify({"running": running, "pid": pid, "bot_mode": bot_mode})
+def _kill_bot(mode: str) -> tuple:
+    pid_file = _BASE / f".bot.{mode}.pid"
+    if not pid_file.exists():
+        return True, "이미 정지됨"
+    try:
+        pid = int(pid_file.read_text().strip())
+        os.kill(pid, signal.SIGTERM)
+        time.sleep(0.8)
+        try:
+            os.kill(pid, 0)
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        pid_file.unlink(missing_ok=True)
+        return True, "정지 완료"
+    except (ProcessLookupError, ValueError):
+        pid_file.unlink(missing_ok=True)
+        return True, "이미 정지됨"
+    except Exception as e:
+        return False, str(e)
+
+
+def _start_bot(mode: str) -> dict:
+    subprocess.Popen(
+        [str(_BASE / "start.sh"), mode],
+        cwd=str(_BASE),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    time.sleep(1.2)
+    return _bot_status(mode)
+
+
+def _valid_mode(mode) -> str:
+    return mode if mode in ("mock", "real") else "mock"
+
+
+@app.route("/")
+def index():
+    return render_template("dashboard.html")
+
+
+@app.route("/api/status")
+def api_status():
+    return jsonify({
+        "mock": _bot_status("mock"),
+        "real": _bot_status("real"),
+    })
+
+
+@app.route("/api/bot/start", methods=["POST"])
+def api_bot_start():
+    mode = _valid_mode((request.get_json(silent=True) or {}).get("mode", "mock"))
+    try:
+        st = _start_bot(mode)
+        return jsonify({"ok": st["running"], "pid": st["pid"], "mode": mode})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/bot/stop", methods=["POST"])
+def api_bot_stop():
+    mode = _valid_mode((request.get_json(silent=True) or {}).get("mode", "mock"))
+    ok, msg = _kill_bot(mode)
+    if ok:
+        return jsonify({"ok": True, "msg": msg})
+    return jsonify({"ok": False, "error": msg}), 500
 
 
 @app.route("/api/bot/deploy", methods=["POST"])
 def api_bot_deploy():
+    mode = _valid_mode((request.get_json(silent=True) or {}).get("mode", "mock"))
     lines = []
     try:
-        # 1. 봇 정지
-        pid_file = _BASE / ".bot.pid"
-        if pid_file.exists():
-            try:
-                pid = int(pid_file.read_text().strip())
-                os.kill(pid, signal.SIGTERM)
-                time.sleep(0.8)
-                try:
-                    os.kill(pid, 0)
-                    os.kill(pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                pid_file.unlink(missing_ok=True)
-                (_BASE / ".bot.mode").unlink(missing_ok=True)
-                lines.append("[deploy] 봇 정지 완료")
-            except (ProcessLookupError, ValueError):
-                pid_file.unlink(missing_ok=True)
-                (_BASE / ".bot.mode").unlink(missing_ok=True)
-                lines.append("[deploy] 봇 이미 정지됨")
+        # 1. 해당 모드 봇 정지
+        ok, msg = _kill_bot(mode)
+        lines.append(f"[deploy] {msg}")
 
         # 2. git pull
         lines.append("[deploy] git pull 실행 중...")
@@ -97,27 +136,10 @@ def api_bot_deploy():
             return jsonify({"ok": False, "lines": lines, "error": "git pull 실패"})
 
         # 3. 봇 재시작
-        lines.append("[deploy] 봇 재시작 중...")
-        subprocess.Popen(
-            [str(_BASE / "start.sh")],
-            cwd=str(_BASE),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        time.sleep(1.2)
-        pid = None
-        running = False
-        if pid_file.exists():
-            try:
-                pid = int(pid_file.read_text().strip())
-                os.kill(pid, 0)
-                running = True
-            except (ProcessLookupError, ValueError):
-                pass
-            except PermissionError:
-                running = True
-        lines.append(f"[deploy] 봇 {'시작됨 (PID ' + str(pid) + ')' if running else '시작 실패'}")
-        return jsonify({"ok": running, "lines": lines, "pid": pid})
+        lines.append(f"[deploy] {mode} 봇 재시작 중...")
+        st = _start_bot(mode)
+        lines.append(f"[deploy] {mode} 봇 {'시작됨 (PID ' + str(st['pid']) + ')' if st['running'] else '시작 실패'}")
+        return jsonify({"ok": st["running"], "lines": lines, "pid": st["pid"], "mode": mode})
 
     except subprocess.TimeoutExpired:
         lines.append("[deploy] git pull 타임아웃")
@@ -127,68 +149,16 @@ def api_bot_deploy():
         return jsonify({"ok": False, "lines": lines, "error": str(e)}), 500
 
 
-@app.route("/api/bot/start", methods=["POST"])
-def api_bot_start():
-    try:
-        subprocess.Popen(
-            [str(_BASE / "start.sh")],
-            cwd=str(_BASE),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        time.sleep(1.2)
-        pid_file = _BASE / ".bot.pid"
-        pid = None
-        running = False
-        if pid_file.exists():
-            try:
-                pid = int(pid_file.read_text().strip())
-                os.kill(pid, 0)
-                running = True
-            except (ProcessLookupError, ValueError):
-                pass
-            except PermissionError:
-                running = True
-        return jsonify({"ok": running, "pid": pid})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
-@app.route("/api/bot/stop", methods=["POST"])
-def api_bot_stop():
-    pid_file = _BASE / ".bot.pid"
-    if not pid_file.exists():
-        return jsonify({"ok": True, "msg": "이미 정지됨"})
-    try:
-        pid = int(pid_file.read_text().strip())
-        os.kill(pid, signal.SIGTERM)
-        time.sleep(0.8)
-        try:
-            os.kill(pid, 0)
-            os.kill(pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        pid_file.unlink(missing_ok=True)
-        (_BASE / ".bot.mode").unlink(missing_ok=True)
-        return jsonify({"ok": True})
-    except (ProcessLookupError, ValueError):
-        pid_file.unlink(missing_ok=True)
-        (_BASE / ".bot.mode").unlink(missing_ok=True)
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
-
-
 @app.route("/api/trades")
 def api_trades():
-    mode = request.args.get("mode", os.getenv("TRADING_MODE", "mock"))
+    mode = _valid_mode(request.args.get("mode", "mock"))
     records = _load_trades(mode)
     return jsonify(list(reversed(records[-200:])))
 
 
 @app.route("/api/trades/summary")
 def api_trades_summary():
-    mode = request.args.get("mode", os.getenv("TRADING_MODE", "mock"))
+    mode = _valid_mode(request.args.get("mode", "mock"))
     records = _load_trades(mode)
     buys = [r for r in records if r.get("action") == "BUY"]
     sells = [r for r in records if r.get("action") == "SELL"]
@@ -201,15 +171,12 @@ def api_trades_summary():
 
 @app.route("/stream/logs")
 def stream_logs():
-    mode = request.args.get("mode", "mock")
-    if mode not in ("mock", "real"):
-        mode = "mock"
+    mode = _valid_mode(request.args.get("mode", "mock"))
     log_file = _BASE / f"logs/trading_{mode}.log"
 
     def generate():
         if not log_file.exists():
             yield f"data: {json.dumps(f'[{mode.upper()}] 로그 파일 없음 — 봇을 먼저 시작하세요')}\n\n"
-            # 파일이 생길 때까지 대기
             while not log_file.exists():
                 time.sleep(1)
                 yield ": waiting\n\n"
