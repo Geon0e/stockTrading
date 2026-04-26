@@ -91,7 +91,7 @@ def load_config() -> Config:
         max_positions=int(os.getenv("MAX_POSITIONS", "5")),
         take_profit_rate=float(os.getenv("TAKE_PROFIT_RATE", "5.0")),
         stop_loss_pct=float(os.getenv("STOP_LOSS_PCT", "0")),
-        real_budget=int(os.getenv("REAL_BUDGET", "1000000")),
+        real_budget=int(os.getenv("REAL_BUDGET", "500000")),
         real_usd_budget=float(os.getenv("REAL_USD_BUDGET", "750.0")),
         **env,
     )
