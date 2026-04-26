@@ -32,9 +32,10 @@ _LOG_DIR = "logs"
 os.makedirs(_LOG_DIR, exist_ok=True)
 
 _formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+_mode = os.getenv("TRADING_MODE", "mock")
 
 _file_handler = RotatingFileHandler(
-    f"{_LOG_DIR}/trading.log",
+    f"{_LOG_DIR}/trading_{_mode}.log",
     maxBytes=5 * 1024 * 1024,  # 5MB
     backupCount=5,
     encoding="utf-8",

@@ -190,19 +190,18 @@ def api_trades_summary():
 
 @app.route("/stream/logs")
 def stream_logs():
-    log_file = _BASE / "logs/trading.log"
+    mode = request.args.get("mode", "mock")
+    if mode not in ("mock", "real"):
+        mode = "mock"
+    log_file = _BASE / f"logs/trading_{mode}.log"
 
     def generate():
-        # 파일이 없으면 최대 5초 대기
-        for _ in range(10):
-            if log_file.exists():
-                break
-            yield ": waiting\n\n"
-            time.sleep(0.5)
-
         if not log_file.exists():
-            yield f"data: {json.dumps('[로그 파일 없음 — 봇을 먼저 시작하세요]')}\n\n"
-            return
+            yield f"data: {json.dumps(f'[{mode.upper()}] 로그 파일 없음 — 봇을 먼저 시작하세요')}\n\n"
+            # 파일이 생길 때까지 대기
+            while not log_file.exists():
+                time.sleep(1)
+                yield ": waiting\n\n"
 
         with open(log_file, "r", encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
@@ -210,7 +209,6 @@ def stream_logs():
                 stripped = line.rstrip()
                 if stripped:
                     yield f"data: {json.dumps(stripped)}\n\n"
-            # 이후 새 줄 실시간 추적
             while True:
                 line = f.readline()
                 if line:

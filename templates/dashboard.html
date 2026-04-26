@@ -92,6 +92,24 @@ header {
 .pane-left  { width: 54%; }
 .pane-right { flex: 1; }
 
+/* ── Log tabs ── */
+.log-tabs { display: flex; gap: 0; }
+.log-tab {
+  padding: 6px 16px; font-size: 11px; font-weight: bold;
+  font-family: inherit; cursor: pointer; border: none;
+  background: #0f0f0f; color: #555;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s;
+}
+.log-tab:hover { color: #aaa; }
+.log-tab.active { color: #e0e0e0; border-bottom-color: #3b82f6; background: #141414; }
+.log-tab .tab-dot {
+  display: inline-block; width: 7px; height: 7px;
+  border-radius: 50%; margin-right: 5px; background: #333;
+}
+.log-tab.mock-active .tab-dot { background: #a78bfa; }
+.log-tab.real-active .tab-dot { background: #22c55e; box-shadow: 0 0 5px #22c55e88; }
+
 .pane-hd {
   background: #141414;
   padding: 7px 14px;
@@ -213,11 +231,19 @@ code { color: #60a5fa; font-size: 11px; }
 <div class="body">
   <!-- 로그 패널 -->
   <div class="pane pane-left">
-    <div class="pane-hd">
-      <span>📋 실시간 로그</span>
-      <button class="btn-sm" id="asBtn" onclick="toggleAS()">자동스크롤 ON</button>
+    <div class="pane-hd" style="padding: 0 14px 0 0;">
+      <div class="log-tabs">
+        <button class="log-tab active mock-active" id="tabMock" onclick="switchLogTab('mock')">
+          <span class="tab-dot"></span>MOCK
+        </button>
+        <button class="log-tab" id="tabReal" onclick="switchLogTab('real')">
+          <span class="tab-dot"></span>REAL
+        </button>
+      </div>
+      <button class="btn-sm" id="asBtn" onclick="toggleAS()" style="margin-left: auto; padding-right: 4px;">자동스크롤 ON</button>
     </div>
-    <div class="log-wrap" id="logWrap"></div>
+    <div class="log-wrap" id="logMock"></div>
+    <div class="log-wrap" id="logReal" style="display:none"></div>
   </div>
 
   <!-- 거래 패널 -->
@@ -384,8 +410,11 @@ function loadTrades() {
       const isBuy = r.action === 'BUY';
       const ac = isBuy ? 'ab' : 'as';
       const icon = isBuy ? '▲' : '▼';
-      const name = r.stock_name
-        ? `<br><span style="color:#3a3a3a;font-size:10px">${r.stock_name}</span>` : '';
+      const nameMain = r.stock_name
+        ? `<span style="font-size:13px;color:#e0e0e0;font-weight:bold">${r.stock_name}</span>`
+        : `<span style="font-size:13px;color:#60a5fa;font-weight:bold">${r.stock_code}</span>`;
+      const codeSub = r.stock_name
+        ? `<br><span style="color:#444;font-size:10px">${r.stock_code}</span>` : '';
       const profitBadge = r.profit_rate_pct != null
         ? `<span style="color:${r.profit_rate_pct>=0?'#22c55e':'#ef4444'};font-size:10px;margin-left:4px">`
           + (r.profit_rate_pct >= 0 ? '+' : '') + r.profit_rate_pct.toFixed(2) + '%</span>'
@@ -394,7 +423,7 @@ function loadTrades() {
       tr.innerHTML =
         `<td style="color:#444">${fmtTime(r.timestamp)}</td>` +
         `<td class="${ac}">${icon} ${r.action}</td>` +
-        `<td><code>${r.stock_code}</code>${name}</td>` +
+        `<td>${nameMain}${codeSub}</td>` +
         `<td>${r.quantity}</td>` +
         `<td>${fmtPrice(r.exec_price, r.stock_code)}${profitBadge}</td>` +
         `<td><span class="sig ${sigClass(r.signal_type)}">${r.signal_type||'—'}</span></td>`;
@@ -404,9 +433,24 @@ function loadTrades() {
 }
 
 // ── Log SSE ──────────────────────────────────────
-const logWrap = document.getElementById('logWrap');
+let activeLogTab = 'mock';
 
-function appendLog(line) {
+function switchLogTab(mode) {
+  activeLogTab = mode;
+  document.getElementById('logMock').style.display = mode === 'mock' ? '' : 'none';
+  document.getElementById('logReal').style.display = mode === 'real' ? '' : 'none';
+  const tMock = document.getElementById('tabMock');
+  const tReal = document.getElementById('tabReal');
+  tMock.className = 'log-tab' + (mode === 'mock' ? ' active mock-active' : '');
+  tReal.className = 'log-tab' + (mode === 'real' ? ' active real-active' : '');
+  if (autoScroll) {
+    const wrap = document.getElementById(mode === 'mock' ? 'logMock' : 'logReal');
+    wrap.scrollTop = wrap.scrollHeight;
+  }
+}
+
+function appendLog(mode, line) {
+  const wrap = document.getElementById(mode === 'mock' ? 'logMock' : 'logReal');
   const d = document.createElement('div');
   d.className = 'll';
   let lvl = 'INFO';
@@ -414,26 +458,25 @@ function appendLog(line) {
   else if (line.includes('[WARNING]') || line.includes('[WARN]')) lvl = 'WARNING';
   else if (line.includes('[DEBUG]'))  lvl = 'DEBUG';
   d.classList.add(lvl);
-
   const html = line
     .replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d+)/, '<span class="ts2">$1</span>')
     .replace(/(매수 완료|체결 완료|골든크로스|BUY)/g, '<span class="kw-b">$1</span>')
     .replace(/(매도 완료|손절 매도|익절 매도|SELL)/g, '<span class="kw-s">$1</span>');
   d.innerHTML = html;
-  logWrap.appendChild(d);
-
-  // DOM 크기 제한
-  while (logWrap.children.length > 600) {
-    logWrap.removeChild(logWrap.firstChild);
-  }
-  if (autoScroll) logWrap.scrollTop = logWrap.scrollHeight;
+  wrap.appendChild(d);
+  while (wrap.children.length > 600) wrap.removeChild(wrap.firstChild);
+  if (autoScroll && activeLogTab === mode) wrap.scrollTop = wrap.scrollHeight;
 }
 
-const es = new EventSource('/stream/logs');
-es.onmessage = e => { try { appendLog(JSON.parse(e.data)); } catch(_) {} };
-es.onerror   = () => {
-  appendLog('[스트림 연결 끊김 — 자동 재연결 중...]');
-};
+function makeEventSource(mode) {
+  const es = new EventSource(`/stream/logs?mode=${mode}`);
+  es.onmessage = e => { try { appendLog(mode, JSON.parse(e.data)); } catch(_) {} };
+  es.onerror   = () => appendLog(mode, `[${mode.toUpperCase()}] 스트림 연결 끊김 — 재연결 중...`);
+  return es;
+}
+
+makeEventSource('mock');
+makeEventSource('real');
 
 // ── Init ──────────────────────────────────────────
 loadStatus();
