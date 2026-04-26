@@ -52,6 +52,7 @@ class Config:
     stop_loss_pct: float    # 손절 기준 (예: 5.0 → 매입가 대비 -5% 시 매도, 0 = 비활성화)
     real_budget: int        # 실전 운용 예산 KRW (포지션당 예산 = real_budget / max_positions)
     real_usd_budget: float  # 실전 해외주식 예산 USD
+    scan_interval_minutes: int  # 스캔 주기(분). 0 = 고정시간(국내 09:05 / 나스닥 23:35)
 
 
 def load_config() -> Config:
@@ -93,5 +94,6 @@ def load_config() -> Config:
         stop_loss_pct=float(os.getenv("STOP_LOSS_PCT", "0")),
         real_budget=int(os.getenv("REAL_BUDGET", "500000")),
         real_usd_budget=float(os.getenv("REAL_USD_BUDGET", "750.0")),
+        scan_interval_minutes=int(os.getenv("SCAN_INTERVAL_MINUTES", "0")),
         **env,
     )

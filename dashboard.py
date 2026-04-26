@@ -79,6 +79,38 @@ def _valid_mode(mode) -> str:
     return mode if mode in ("mock", "real") else "mock"
 
 
+def _read_env() -> dict:
+    env_path = _BASE / ".env"
+    result = {}
+    if not env_path.exists():
+        return result
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, _, v = line.partition("=")
+            result[k.strip()] = v.strip()
+    return result
+
+
+def _write_env_key(key: str, value: str) -> None:
+    env_path = _BASE / ".env"
+    if not env_path.exists():
+        env_path.write_text(f"{key}={value}\n", encoding="utf-8")
+        return
+    lines = env_path.read_text(encoding="utf-8").splitlines()
+    found = False
+    new_lines = []
+    for line in lines:
+        if line.strip().startswith(f"{key}="):
+            new_lines.append(f"{key}={value}")
+            found = True
+        else:
+            new_lines.append(line)
+    if not found:
+        new_lines.append(f"{key}={value}")
+    env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+
 @app.route("/")
 def index():
     return render_template("dashboard.html")
@@ -147,6 +179,25 @@ def api_bot_deploy():
     except Exception as e:
         lines.append(f"[deploy] 오류: {e}")
         return jsonify({"ok": False, "lines": lines, "error": str(e)}), 500
+
+
+@app.route("/api/config")
+def api_get_config():
+    env = _read_env()
+    return jsonify({
+        "scan_interval_minutes": int(env.get("SCAN_INTERVAL_MINUTES", "0")),
+    })
+
+
+@app.route("/api/config", methods=["POST"])
+def api_set_config():
+    data = request.get_json(silent=True) or {}
+    if "scan_interval_minutes" in data:
+        val = int(data["scan_interval_minutes"])
+        if val < 0:
+            return jsonify({"ok": False, "error": "유효하지 않은 값"}), 400
+        _write_env_key("SCAN_INTERVAL_MINUTES", str(val))
+    return jsonify({"ok": True})
 
 
 @app.route("/api/trades")

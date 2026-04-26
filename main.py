@@ -406,9 +406,17 @@ def main() -> None:
         "telegram_bot":  telegram_bot,
     }
 
-    schedule.every().day.at("09:05").do(run_domestic_cycle, ctx)
-    if config.scan_nasdaq:
-        schedule.every().day.at("23:35").do(run_nasdaq_cycle, ctx)
+    interval = config.scan_interval_minutes
+    if interval > 0:
+        schedule.every(interval).minutes.do(run_domestic_cycle, ctx)
+        if config.scan_nasdaq:
+            schedule.every(interval).minutes.do(run_nasdaq_cycle, ctx)
+        logger.info(f"스캔 주기: {interval}분 간격")
+    else:
+        schedule.every().day.at("09:05").do(run_domestic_cycle, ctx)
+        if config.scan_nasdaq:
+            schedule.every().day.at("23:35").do(run_nasdaq_cycle, ctx)
+        logger.info("스캔 주기: 국내 09:05 / 나스닥 23:35 고정")
     if config.stop_loss_pct > 0:
         schedule.every(1).minutes.do(run_stop_loss_check, ctx)
         logger.info(f"손절 모니터링 활성화: -{config.stop_loss_pct}% | 1분 주기 체크")
