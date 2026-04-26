@@ -185,6 +185,43 @@ code { color: #60a5fa; font-size: 11px; }
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: #0a0a0a; }
 ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
+
+/* ── Mobile ── */
+@media (max-width: 768px) {
+  body { height: auto; overflow: auto; }
+
+  header {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+  .logo { font-size: 14px; }
+  .bot-controls { margin-left: 0; width: 100%; justify-content: flex-end; }
+  .btn-bot { padding: 6px 12px; font-size: 11px; }
+  #lastTs { display: none; }
+
+  .stats {
+    gap: 14px;
+    padding: 6px 12px;
+    flex-wrap: wrap;
+  }
+  .stat-val { font-size: 16px; }
+  #statSignals { font-size: 10px; }
+
+  .body {
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
+    background: #0a0a0a;
+  }
+  .pane-left  { width: 100%; height: 260px; flex-shrink: 0; }
+  .pane-right { flex: none; height: auto; min-height: 300px; }
+
+  .tbl-wrap { overflow-x: auto; overflow-y: auto; max-height: 50vh; }
+  table { font-size: 11px; min-width: 480px; }
+  thead th { padding: 6px 6px; }
+  td { padding: 5px 6px; }
+}
 </style>
 </head>
 <body>
