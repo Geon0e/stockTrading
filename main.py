@@ -12,6 +12,8 @@ from strategy.configurable_strategy import ConfigurableStrategy
 from strategy.strategy_loader import load_strategy_config
 from screener.stock_screener import StockScreener
 from audit.trade_logger import TradeLogger
+from trader.real_domestic import run_real_domestic_cycle
+from trader.real_nasdaq import run_real_nasdaq_cycle
 from notifications.telegram_notifier import (
     from_env as telegram_from_env,
     notify_signal as tg_notify_signal,
@@ -338,7 +340,10 @@ def run_domestic_cycle(ctx: dict) -> None:
         return
     try:
         token = ctx["token_manager"].get_valid_token()
-        _run_domestic_cycle(ctx, token)
+        if ctx["config"].mode == "real":
+            run_real_domestic_cycle(ctx, token)
+        else:
+            _run_domestic_cycle(ctx, token)
     except Exception as e:
         logger.error(f"국내 사이클 오류: {e}", exc_info=True)
 
@@ -350,7 +355,10 @@ def run_nasdaq_cycle(ctx: dict) -> None:
         return
     try:
         token = ctx["token_manager"].get_valid_token()
-        _run_nasdaq_cycle(ctx, token)
+        if ctx["config"].mode == "real":
+            run_real_nasdaq_cycle(ctx, token)
+        else:
+            _run_nasdaq_cycle(ctx, token)
     except Exception as e:
         logger.error(f"나스닥 사이클 오류: {e}", exc_info=True)
 
@@ -358,11 +366,15 @@ def run_nasdaq_cycle(ctx: dict) -> None:
 def main() -> None:
     config = load_config()
     scan_mode = "전종목" if config.scan_all_stocks else "거래량 상위"
+    budget_info = (
+        f" | 예산: {config.real_budget:,}원 (포지션당 {config.real_budget // config.max_positions:,}원)"
+        if config.mode == "real" else ""
+    )
     logger.info(
         f"모드: {config.mode.upper()} | 국내 스캔: {scan_mode} | "
         f"나스닥100: {'활성화' if config.scan_nasdaq else '비활성화'} | "
         f"최대보유: {config.max_positions}개 | "
-        f"스케줄: 국내 09:05 / 나스닥 23:35"
+        f"스케줄: 국내 09:05 / 나스닥 23:35{budget_info}"
     )
 
     strategy_path = "STRATEGY.md"

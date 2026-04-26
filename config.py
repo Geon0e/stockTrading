@@ -50,6 +50,8 @@ class Config:
     max_positions: int      # 최대 동시 보유 종목 수
     take_profit_rate: float # 익절 수익률 기준 (%)
     stop_loss_pct: float    # 손절 기준 (예: 5.0 → 매입가 대비 -5% 시 매도, 0 = 비활성화)
+    real_budget: int        # 실전 운용 예산 KRW (포지션당 예산 = real_budget / max_positions)
+    real_usd_budget: float  # 실전 해외주식 예산 USD
 
 
 def load_config() -> Config:
@@ -89,5 +91,7 @@ def load_config() -> Config:
         max_positions=int(os.getenv("MAX_POSITIONS", "5")),
         take_profit_rate=float(os.getenv("TAKE_PROFIT_RATE", "5.0")),
         stop_loss_pct=float(os.getenv("STOP_LOSS_PCT", "0")),
+        real_budget=int(os.getenv("REAL_BUDGET", "1000000")),
+        real_usd_budget=float(os.getenv("REAL_USD_BUDGET", "750.0")),
         **env,
     )
