@@ -33,21 +33,28 @@ def index():
 
 @app.route("/api/status")
 def api_status():
-    pid_file = _BASE / ".bot.pid"
+    pid_file  = _BASE / ".bot.pid"
+    mode_file = _BASE / ".bot.mode"
     running = False
     pid = None
+    bot_mode = None
+
     if pid_file.exists():
         try:
             pid = int(pid_file.read_text().strip())
             os.kill(pid, 0)
             running = True
         except (ProcessLookupError, ValueError):
-            pass
+            pid_file.unlink(missing_ok=True)
         except PermissionError:
-            running = True  # 프로세스 존재하지만 권한 없음
+            running = True
 
-    mode = os.getenv("TRADING_MODE", "mock")
-    return jsonify({"running": running, "pid": pid, "mode": mode})
+    if running and mode_file.exists():
+        bot_mode = mode_file.read_text().strip()
+    elif not running:
+        mode_file.unlink(missing_ok=True)
+
+    return jsonify({"running": running, "pid": pid, "bot_mode": bot_mode})
 
 
 @app.route("/api/bot/deploy", methods=["POST"])
@@ -67,9 +74,11 @@ def api_bot_deploy():
                 except ProcessLookupError:
                     pass
                 pid_file.unlink(missing_ok=True)
+                (_BASE / ".bot.mode").unlink(missing_ok=True)
                 lines.append("[deploy] 봇 정지 완료")
             except (ProcessLookupError, ValueError):
                 pid_file.unlink(missing_ok=True)
+                (_BASE / ".bot.mode").unlink(missing_ok=True)
                 lines.append("[deploy] 봇 이미 정지됨")
 
         # 2. git pull
@@ -160,9 +169,11 @@ def api_bot_stop():
         except ProcessLookupError:
             pass
         pid_file.unlink(missing_ok=True)
+        (_BASE / ".bot.mode").unlink(missing_ok=True)
         return jsonify({"ok": True})
     except (ProcessLookupError, ValueError):
         pid_file.unlink(missing_ok=True)
+        (_BASE / ".bot.mode").unlink(missing_ok=True)
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500

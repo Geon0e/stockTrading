@@ -352,11 +352,23 @@ function loadStatus() {
     dot.className = 'dot ' + (d.running ? 'on' : 'off');
     document.getElementById('statusText').textContent = d.running ? '실행 중' : '정지됨';
     const b = document.getElementById('modeBadge');
-    b.textContent = (d.mode || 'mock').toUpperCase();
-    b.className = 'badge ' + (d.mode || 'mock');
+    const bm = d.bot_mode || '';
+    b.textContent = bm ? bm.toUpperCase() : '';
+    b.className = 'badge ' + (bm || 'mock');
+    b.style.display = bm ? '' : 'none';
     document.getElementById('pidText').textContent = d.pid ? 'PID ' + d.pid : '';
     document.getElementById('lastTs').textContent = new Date().toLocaleTimeString('ko-KR');
     setButtons(d.running, false);
+
+    // 탭별 실행 상태 표시
+    const tMock = document.getElementById('tabMock');
+    const tReal = document.getElementById('tabReal');
+    const mockOn = d.running && d.bot_mode === 'mock';
+    const realOn = d.running && d.bot_mode === 'real';
+    tMock.querySelector('.tab-dot').style.background = mockOn ? '#a78bfa' : '#333';
+    tMock.querySelector('.tab-dot').style.boxShadow  = mockOn ? '0 0 5px #a78bfa88' : 'none';
+    tReal.querySelector('.tab-dot').style.background = realOn ? '#22c55e' : '#333';
+    tReal.querySelector('.tab-dot').style.boxShadow  = realOn ? '0 0 5px #22c55e88' : 'none';
   }).catch(() => {});
 }
 

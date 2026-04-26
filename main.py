@@ -366,6 +366,11 @@ def run_nasdaq_cycle(ctx: dict) -> None:
 
 def main() -> None:
     config = load_config()
+
+    # 실행 중인 모드를 대시보드가 읽을 수 있도록 기록
+    from pathlib import Path
+    Path(".bot.mode").write_text(config.mode)
+
     scan_mode = "전종목" if config.scan_all_stocks else "거래량 상위"
     budget_info = (
         f" | 예산: {config.real_budget:,}원 (포지션당 {config.real_budget // config.max_positions:,}원)"
