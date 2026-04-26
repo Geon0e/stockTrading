@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockTrading Dashboard</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Courier New', 'Menlo', monospace;
+  background: #0a0a0a;
+  color: #d4d4d4;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Header ── */
+header {
+  background: #141414;
+  border-bottom: 1px solid #252525;
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+.logo { font-size: 16px; font-weight: bold; color: #fff; letter-spacing: -0.5px; }
+.dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot.on  { background: #22c55e; box-shadow: 0 0 7px #22c55e88; }
+.dot.off { background: #555; }
+#statusText { font-size: 13px; color: #aaa; }
+.badge {
+  padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: bold;
+}
+.badge.mock { background: #4c1d95; color: #c4b5fd; }
+.badge.real { background: #14532d; color: #86efac; }
+.pid  { font-size: 11px; color: #444; }
+.ts   { font-size: 11px; color: #444; }
+
+/* ── Bot control buttons ── */
+.bot-controls { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.btn-bot {
+  padding: 5px 14px; border-radius: 5px; font-size: 12px; font-weight: bold;
+  font-family: inherit; cursor: pointer; border: none; transition: opacity 0.15s;
+}
+.btn-bot:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn-start { background: #15803d; color: #fff; }
+.btn-start:hover:not(:disabled) { background: #16a34a; }
+.btn-stop  { background: #b91c1c; color: #fff; }
+.btn-stop:hover:not(:disabled)  { background: #dc2626; }
+.btn-deploy { background: #1d4ed8; color: #fff; }
+.btn-deploy:hover:not(:disabled) { background: #2563eb; }
+.btn-spin::after { content: ' …'; }
+
+/* ── Stats bar ── */
+.stats {
+  background: #0f0f0f;
+  border-bottom: 1px solid #1e1e1e;
+  padding: 7px 18px;
+  display: flex;
+  gap: 28px;
+  flex-shrink: 0;
+  align-items: center;
+}
+.stat { display: flex; flex-direction: column; }
+.stat-lbl { font-size: 10px; color: #555; text-transform: uppercase; letter-spacing: 0.8px; }
+.stat-val { font-size: 20px; font-weight: bold; line-height: 1.2; }
+.stat-val.t { color: #60a5fa; }
+.stat-val.b { color: #22c55e; }
+.stat-val.s { color: #ef4444; }
+#statSignals { font-size: 12px; color: #888; margin-top: 2px; }
+
+/* ── Layout ── */
+.body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  gap: 1px;
+  background: #1e1e1e;
+}
+.pane {
+  display: flex;
+  flex-direction: column;
+  background: #0a0a0a;
+  overflow: hidden;
+}
+.pane-left  { width: 54%; }
+.pane-right { flex: 1; }
+
+.pane-hd {
+  background: #141414;
+  padding: 7px 14px;
+  font-size: 11px;
+  font-weight: bold;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  border-bottom: 1px solid #1e1e1e;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+.btn-sm {
+  font-size: 11px; cursor: pointer;
+  color: #3b82f6; background: none; border: none;
+  font-family: inherit;
+}
+.btn-sm:hover { color: #60a5fa; }
+
+/* ── Log viewer ── */
+.log-wrap {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 10px;
+  font-size: 11.5px;
+  line-height: 1.65;
+}
+.ll { padding: 0; white-space: pre-wrap; word-break: break-all; }
+.ll.INFO    { color: #c9c9c9; }
+.ll.WARNING { color: #fbbf24; }
+.ll.ERROR   { color: #f87171; }
+.ll.DEBUG   { color: #4b5563; }
+.ll .ts2    { color: #3f3f3f; }
+.ll .kw-b   { color: #4ade80; font-weight: bold; }
+.ll .kw-s   { color: #f87171; font-weight: bold; }
+
+/* ── Trade table ── */
+.tbl-wrap { flex: 1; overflow-y: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+thead th {
+  background: #111;
+  padding: 7px 9px;
+  text-align: left;
+  font-size: 10px;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+}
+tbody tr { border-bottom: 1px solid #141414; }
+tbody tr:hover { background: #111; }
+td { padding: 6px 9px; color: #bbb; vertical-align: middle; }
+.ab { color: #22c55e; font-weight: bold; }
+.as { color: #ef4444; font-weight: bold; }
+.sig {
+  display: inline-block; padding: 1px 5px;
+  border-radius: 3px; font-size: 10px; white-space: nowrap;
+}
+.sg-gc  { background: #14291e; color: #4ade80; }
+.sg-sl  { background: #2d1414; color: #f87171; }
+.sg-tp  { background: #14213d; color: #60a5fa; }
+.sg-dc  { background: #2d2414; color: #fbbf24; }
+.sg-def { background: #1e1e1e; color: #888; }
+code { color: #60a5fa; font-size: 11px; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: #0a0a0a; }
+::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="logo">📈 StockTrading</span>
+  <span class="dot off" id="dot"></span>
+  <span id="statusText">연결 중...</span>
+  <span class="badge" id="modeBadge"></span>
+  <span class="pid" id="pidText"></span>
+  <span class="ts" id="lastTs"></span>
+  <div class="bot-controls">
+    <button class="btn-bot btn-deploy" id="btnDeploy" onclick="botDeploy()">🚀 배포</button>
+    <button class="btn-bot btn-start" id="btnStart" onclick="botStart()">▶ 시작</button>
+    <button class="btn-bot btn-stop"  id="btnStop"  onclick="botStop()">■ 정지</button>
+  </div>
+</header>
+
+<div class="stats">
+  <div class="stat">
+    <span class="stat-lbl">전체</span>
+    <span class="stat-val t" id="stTotal">—</span>
+  </div>
+  <div class="stat">
+    <span class="stat-lbl">매수</span>
+    <span class="stat-val b" id="stBuys">—</span>
+  </div>
+  <div class="stat">
+    <span class="stat-lbl">매도</span>
+    <span class="stat-val s" id="stSells">—</span>
+  </div>
+  <div class="stat" style="flex:1">
+    <span class="stat-lbl">신호 분포</span>
+    <span id="statSignals">—</span>
+  </div>
+  <div>
+    <select id="modeSelect" onchange="onModeChange(this.value)"
+      style="background:#1a1a1a;color:#aaa;border:1px solid #333;
+             padding:4px 8px;border-radius:4px;font-family:inherit;font-size:12px;cursor:pointer">
+      <option value="mock">Mock</option>
+      <option value="real">Real</option>
+    </select>
+  </div>
+</div>
+
+<div class="body">
+  <!-- 로그 패널 -->
+  <div class="pane pane-left">
+    <div class="pane-hd">
+      <span>📋 실시간 로그</span>
+      <button class="btn-sm" id="asBtn" onclick="toggleAS()">자동스크롤 ON</button>
+    </div>
+    <div class="log-wrap" id="logWrap"></div>
+  </div>
+
+  <!-- 거래 패널 -->
+  <div class="pane pane-right">
+    <div class="pane-hd">
+      <span>💼 거래 내역</span>
+      <button class="btn-sm" onclick="loadTrades()">새로고침</button>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>시각</th>
+            <th>구분</th>
+            <th>종목</th>
+            <th>수량</th>
+            <th>체결가</th>
+            <th>신호</th>
+          </tr>
+        </thead>
+        <tbody id="tBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+let autoScroll = true;
+let currentMode = 'mock';
+
+function toggleAS() {
+  autoScroll = !autoScroll;
+  document.getElementById('asBtn').textContent = '자동스크롤 ' + (autoScroll ? 'ON' : 'OFF');
+}
+
+function onModeChange(v) {
+  currentMode = v;
+  loadTrades();
+  loadSummary();
+}
+
+// ── Bot control ──────────────────────────────────
+function setButtons(running, spinning) {
+  const bs = document.getElementById('btnStart');
+  const bx = document.getElementById('btnStop');
+  const bd = document.getElementById('btnDeploy');
+  bs.disabled = running || spinning;
+  bx.disabled = !running || spinning;
+  bd.disabled = spinning;
+  bs.classList.toggle('btn-spin', spinning && !running);
+  bx.classList.toggle('btn-spin', spinning && running);
+  bd.classList.toggle('btn-spin', spinning);
+}
+
+function botDeploy() {
+  setButtons(false, true);
+  document.getElementById('btnDeploy').textContent = '🚀 배포 중';
+  appendLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  appendLog('[deploy] git pull → 재시작 시작...');
+  fetch('/api/bot/deploy', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      (d.lines || []).forEach(l => appendLog(l));
+      appendLog(d.ok ? '✅ 배포 완료' : '❌ 배포 실패: ' + (d.error || ''));
+      appendLog('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      document.getElementById('btnDeploy').textContent = '🚀 배포';
+      loadStatus();
+      loadTrades();
+      loadSummary();
+    })
+    .catch(e => {
+      appendLog('[deploy] 네트워크 오류: ' + e);
+      document.getElementById('btnDeploy').textContent = '🚀 배포';
+      setButtons(false, false);
+    });
+}
+
+function botStart() {
+  setButtons(false, true);
+  appendLog('[대시보드] 봇 시작 요청...');
+  fetch('/api/bot/start', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      appendLog(d.ok ? `[대시보드] 봇 시작됨 (PID ${d.pid})` : `[대시보드] 시작 실패: ${d.error||''}`);
+      loadStatus();
+    })
+    .catch(e => { appendLog('[대시보드] 오류: ' + e); setButtons(false, false); });
+}
+
+function botStop() {
+  setButtons(true, true);
+  appendLog('[대시보드] 봇 정지 요청...');
+  fetch('/api/bot/stop', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      appendLog(d.ok ? '[대시보드] 봇 정지됨' : `[대시보드] 정지 실패: ${d.error||''}`);
+      loadStatus();
+    })
+    .catch(e => { appendLog('[대시보드] 오류: ' + e); setButtons(true, false); });
+}
+
+// ── Status ──────────────────────────────────────
+function loadStatus() {
+  fetch('/api/status').then(r => r.json()).then(d => {
+    const dot = document.getElementById('dot');
+    dot.className = 'dot ' + (d.running ? 'on' : 'off');
+    document.getElementById('statusText').textContent = d.running ? '실행 중' : '정지됨';
+    const b = document.getElementById('modeBadge');
+    b.textContent = (d.mode || 'mock').toUpperCase();
+    b.className = 'badge ' + (d.mode || 'mock');
+    document.getElementById('pidText').textContent = d.pid ? 'PID ' + d.pid : '';
+    document.getElementById('lastTs').textContent = new Date().toLocaleTimeString('ko-KR');
+    setButtons(d.running, false);
+  }).catch(() => {});
+}
+
+// ── Summary ──────────────────────────────────────
+function loadSummary() {
+  fetch('/api/trades/summary?mode=' + currentMode).then(r => r.json()).then(d => {
+    document.getElementById('stTotal').textContent = d.total;
+    document.getElementById('stBuys').textContent  = d.buys;
+    document.getElementById('stSells').textContent = d.sells;
+    const sigs = Object.entries(d.by_signal)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => k + ' ' + v + '건')
+      .join('  ·  ');
+    document.getElementById('statSignals').textContent = sigs || '—';
+  }).catch(() => {});
+}
+
+// ── Trades ──────────────────────────────────────
+function fmtTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const mo = String(d.getMonth()+1).padStart(2,'0');
+  const dy = String(d.getDate()).padStart(2,'0');
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mm = String(d.getMinutes()).padStart(2,'0');
+  return mo+'/'+dy+' '+hh+':'+mm;
+}
+
+function fmtPrice(p, code) {
+  if (!p) return '—';
+  const isUS = /^[A-Z]{1,5}$/.test(code);
+  const n = parseFloat(p);
+  if (isNaN(n)) return p;
+  return isUS ? '$' + n.toFixed(2) : n.toLocaleString('ko-KR') + '원';
+}
+
+function sigClass(s) {
+  if (!s) return 'sg-def';
+  if (s.includes('골든') || s.includes('GC')) return 'sg-gc';
+  if (s.includes('손절')) return 'sg-sl';
+  if (s.includes('익절')) return 'sg-tp';
+  if (s.includes('데드') || s.includes('DC')) return 'sg-dc';
+  return 'sg-def';
+}
+
+function loadTrades() {
+  fetch('/api/trades?mode=' + currentMode).then(r => r.json()).then(records => {
+    const tb = document.getElementById('tBody');
+    tb.innerHTML = '';
+    records.forEach(r => {
+      const isBuy = r.action === 'BUY';
+      const ac = isBuy ? 'ab' : 'as';
+      const icon = isBuy ? '▲' : '▼';
+      const name = r.stock_name
+        ? `<br><span style="color:#3a3a3a;font-size:10px">${r.stock_name}</span>` : '';
+      const profitBadge = r.profit_rate_pct != null
+        ? `<span style="color:${r.profit_rate_pct>=0?'#22c55e':'#ef4444'};font-size:10px;margin-left:4px">`
+          + (r.profit_rate_pct >= 0 ? '+' : '') + r.profit_rate_pct.toFixed(2) + '%</span>'
+        : '';
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td style="color:#444">${fmtTime(r.timestamp)}</td>` +
+        `<td class="${ac}">${icon} ${r.action}</td>` +
+        `<td><code>${r.stock_code}</code>${name}</td>` +
+        `<td>${r.quantity}</td>` +
+        `<td>${fmtPrice(r.exec_price, r.stock_code)}${profitBadge}</td>` +
+        `<td><span class="sig ${sigClass(r.signal_type)}">${r.signal_type||'—'}</span></td>`;
+      tb.appendChild(tr);
+    });
+  }).catch(() => {});
+}
+
+// ── Log SSE ──────────────────────────────────────
+const logWrap = document.getElementById('logWrap');
+
+function appendLog(line) {
+  const d = document.createElement('div');
+  d.className = 'll';
+  let lvl = 'INFO';
+  if (line.includes('[ERROR]'))   lvl = 'ERROR';
+  else if (line.includes('[WARNING]') || line.includes('[WARN]')) lvl = 'WARNING';
+  else if (line.includes('[DEBUG]'))  lvl = 'DEBUG';
+  d.classList.add(lvl);
+
+  const html = line
+    .replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d+)/, '<span class="ts2">$1</span>')
+    .replace(/(매수 완료|체결 완료|골든크로스|BUY)/g, '<span class="kw-b">$1</span>')
+    .replace(/(매도 완료|손절 매도|익절 매도|SELL)/g, '<span class="kw-s">$1</span>');
+  d.innerHTML = html;
+  logWrap.appendChild(d);
+
+  // DOM 크기 제한
+  while (logWrap.children.length > 600) {
+    logWrap.removeChild(logWrap.firstChild);
+  }
+  if (autoScroll) logWrap.scrollTop = logWrap.scrollHeight;
+}
+
+const es = new EventSource('/stream/logs');
+es.onmessage = e => { try { appendLog(JSON.parse(e.data)); } catch(_) {} };
+es.onerror   = () => {
+  appendLog('[스트림 연결 끊김 — 자동 재연결 중...]');
+};
+
+// ── Init ──────────────────────────────────────────
+loadStatus();
+loadTrades();
+loadSummary();
+setInterval(loadStatus,  5000);
+setInterval(loadTrades,  30000);
+setInterval(loadSummary, 30000);
+</script>
+</body>
+</html>
