@@ -418,15 +418,14 @@ def main() -> None:
     Path(".bot.mode").write_text(config.mode)
 
     scan_mode = "전종목" if config.scan_all_stocks else "거래량 상위"
-    budget_info = (
-        f" | 예산: {config.real_budget:,}원 (포지션당 {config.real_budget // config.max_positions:,}원)"
-        if config.mode == "real" else ""
-    )
+    budget = config.real_budget if config.mode == "real" else config.mock_budget
+    per_position = budget // config.max_positions
     logger.info(
         f"모드: {config.mode.upper()} | 국내 스캔: {scan_mode} | "
         f"나스닥100: {'활성화' if config.scan_nasdaq else '비활성화'} | "
         f"최대보유: {config.max_positions}개 | "
-        f"스케줄: 국내 09:05 / 나스닥 23:35{budget_info}"
+        f"예산: {budget:,}원 (포지션당 {per_position:,}원) | "
+        f"스케줄: 국내 09:05 / 나스닥 23:35"
     )
 
     mode_strategy_path = f"STRATEGY_{config.mode.upper()}.md"
