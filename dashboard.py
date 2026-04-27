@@ -207,6 +207,40 @@ def api_trades():
     return jsonify(list(reversed(records[-200:])))
 
 
+@app.route("/api/portfolio")
+def api_portfolio():
+    mode = _valid_mode(request.args.get("mode", "mock"))
+    records = _load_trades(mode)
+    holdings = {}
+    for r in records:
+        code = r.get("stock_code")
+        if not code:
+            continue
+        action = r.get("action")
+        qty = int(r.get("quantity", 0))
+        price = float(r.get("exec_price") or 0)
+        name = r.get("stock_name", "")
+        if action == "BUY":
+            if code not in holdings:
+                holdings[code] = {"code": code, "name": name, "qty": 0, "avg_price": 0.0, "total_cost": 0.0}
+            h = holdings[code]
+            h["total_cost"] += price * qty
+            h["qty"] += qty
+            h["avg_price"] = h["total_cost"] / h["qty"] if h["qty"] > 0 else 0.0
+            if name:
+                h["name"] = name
+        elif action == "SELL":
+            if code in holdings:
+                holdings[code]["qty"] -= qty
+                if holdings[code]["qty"] <= 0:
+                    del holdings[code]
+    result = [
+        {"code": v["code"], "name": v["name"], "qty": v["qty"], "avg_price": round(v["avg_price"], 2)}
+        for v in holdings.values()
+    ]
+    return jsonify(result)
+
+
 @app.route("/api/trades/summary")
 def api_trades_summary():
     mode = _valid_mode(request.args.get("mode", "mock"))

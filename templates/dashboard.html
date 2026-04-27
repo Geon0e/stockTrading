@@ -344,9 +344,10 @@ code { color: #60a5fa; font-size: 11px; }
 
 <!-- 모바일 전용 탭 바 -->
 <div class="mob-tabs">
-  <button class="mob-tab active" id="mobTabLog"      onclick="switchMobTab('log')">📋 로그</button>
-  <button class="mob-tab"        id="mobTabTrades"   onclick="switchMobTab('trades')">💼 거래내역</button>
-  <button class="mob-tab"        id="mobTabSettings" onclick="switchMobTab('settings')">⚙️ 설정</button>
+  <button class="mob-tab active" id="mobTabLog"       onclick="switchMobTab('log')">📋 로그</button>
+  <button class="mob-tab"        id="mobTabPortfolio" onclick="switchMobTab('portfolio')">📊 보유</button>
+  <button class="mob-tab"        id="mobTabTrades"    onclick="switchMobTab('trades')">💼 거래내역</button>
+  <button class="mob-tab"        id="mobTabSettings"  onclick="switchMobTab('settings')">⚙️ 설정</button>
 </div>
 
 <div class="body">
@@ -371,14 +372,27 @@ code { color: #60a5fa; font-size: 11px; }
   <div class="pane pane-right">
     <div class="pane-hd" style="padding: 0 14px 0 0;">
       <div class="right-tabs">
-        <button class="right-tab active" id="rtabTrades"   onclick="switchRightTab('trades')">💼 거래내역</button>
-        <button class="right-tab"        id="rtabSettings" onclick="switchRightTab('settings')">⚙️ 설정</button>
+        <button class="right-tab active" id="rtabPortfolio" onclick="switchRightTab('portfolio')">📊 포트폴리오</button>
+        <button class="right-tab"        id="rtabTrades"    onclick="switchRightTab('trades')">💼 거래내역</button>
+        <button class="right-tab"        id="rtabSettings"  onclick="switchRightTab('settings')">⚙️ 설정</button>
       </div>
-      <button class="btn-sm" id="tradesRefreshBtn" onclick="loadTrades()">새로고침</button>
+      <button class="btn-sm" id="tradesRefreshBtn" onclick="refreshRight()" style="display:none">새로고침</button>
+    </div>
+
+    <!-- 포트폴리오 -->
+    <div class="tbl-wrap" id="portfolioPanel">
+      <table>
+        <thead>
+          <tr>
+            <th>종목</th><th>수량</th><th>평균단가</th>
+          </tr>
+        </thead>
+        <tbody id="pfBody"></tbody>
+      </table>
     </div>
 
     <!-- 거래내역 -->
-    <div class="tbl-wrap" id="tradesPanel">
+    <div class="tbl-wrap" id="tradesPanel" style="display:none">
       <table>
         <thead>
           <tr>
@@ -428,6 +442,7 @@ function onModeChange(v) {
   currentMode = v;
   loadTrades();
   loadSummary();
+  loadPortfolio();
 }
 
 // ── 버튼 상태 (mock/real 각각 독립) ──────────────────
@@ -595,6 +610,12 @@ function switchLogTab(mode) {
     const w = document.getElementById(mode==='mock' ? 'logMock' : 'logReal');
     w.scrollTop = w.scrollHeight;
   }
+  // selectbox 동기화 + 데이터 새로고침
+  currentMode = mode;
+  document.getElementById('modeSelect').value = mode;
+  loadTrades();
+  loadSummary();
+  loadPortfolio();
 }
 
 function appendLog(mode, line) {
@@ -622,13 +643,52 @@ function makeEventSource(mode) {
 }
 
 // ── 우측 패널 탭 (데스크톱) ───────────────────────
+let activeRightTab = 'portfolio';
+
 function switchRightTab(tab) {
-  document.getElementById('tradesPanel').style.display   = tab === 'trades'   ? '' : 'none';
-  document.getElementById('settingsPanel').style.display = tab === 'settings' ? '' : 'none';
-  document.getElementById('tradesRefreshBtn').style.display = tab === 'trades' ? '' : 'none';
-  document.getElementById('rtabTrades').classList.toggle('active',   tab === 'trades');
-  document.getElementById('rtabSettings').classList.toggle('active', tab === 'settings');
-  if (tab === 'settings') loadConfig();
+  activeRightTab = tab;
+  document.getElementById('portfolioPanel').style.display = tab === 'portfolio' ? '' : 'none';
+  document.getElementById('tradesPanel').style.display    = tab === 'trades'    ? '' : 'none';
+  document.getElementById('settingsPanel').style.display  = tab === 'settings'  ? '' : 'none';
+  document.getElementById('tradesRefreshBtn').style.display = (tab === 'portfolio' || tab === 'trades') ? '' : 'none';
+  document.getElementById('rtabPortfolio').classList.toggle('active', tab === 'portfolio');
+  document.getElementById('rtabTrades').classList.toggle('active',    tab === 'trades');
+  document.getElementById('rtabSettings').classList.toggle('active',  tab === 'settings');
+  if (tab === 'settings')  loadConfig();
+  if (tab === 'portfolio') loadPortfolio();
+  if (tab === 'trades')    loadTrades();
+}
+
+function refreshRight() {
+  if (activeRightTab === 'portfolio') loadPortfolio();
+  else if (activeRightTab === 'trades') loadTrades();
+}
+
+// ── 포트폴리오 ──────────────────────────────────────
+function loadPortfolio() {
+  fetch('/api/portfolio?mode=' + currentMode).then(r => r.json()).then(items => {
+    const tb = document.getElementById('pfBody');
+    tb.innerHTML = '';
+    if (!items.length) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td colspan="3" style="color:#444;text-align:center;padding:20px">보유 종목 없음</td>';
+      tb.appendChild(tr);
+      return;
+    }
+    items.forEach(h => {
+      const nameMain = h.name
+        ? `<span style="font-size:13px;color:#e0e0e0;font-weight:bold">${h.name}</span><br><span style="color:#444;font-size:10px">${h.code}</span>`
+        : `<span style="font-size:13px;color:#60a5fa;font-weight:bold">${h.code}</span>`;
+      const isOverseas = /^[A-Z]{1,5}$/.test(h.code);
+      const priceStr = isOverseas ? '$' + h.avg_price.toFixed(2) : h.avg_price.toLocaleString('ko-KR') + '원';
+      const tr = document.createElement('tr');
+      tr.innerHTML =
+        `<td>${nameMain}</td>` +
+        `<td style="color:#60a5fa;font-weight:bold">${h.qty}주</td>` +
+        `<td style="color:#aaa">${priceStr}</td>`;
+      tb.appendChild(tr);
+    });
+  }).catch(() => {});
 }
 
 // ── 설정 ──────────────────────────────────────────
@@ -683,7 +743,7 @@ function saveConfig() {
 function switchMobTab(tab) {
   const logPane    = document.querySelector('.pane-left');
   const tradesPane = document.querySelector('.pane-right');
-  ['mobTabLog','mobTabTrades','mobTabSettings'].forEach(id =>
+  ['mobTabLog','mobTabPortfolio','mobTabTrades','mobTabSettings'].forEach(id =>
     document.getElementById(id).classList.remove('active'));
 
   if (tab === 'log') {
@@ -693,14 +753,16 @@ function switchMobTab(tab) {
   } else {
     logPane.classList.add('mob-hidden');
     tradesPane.classList.add('mob-active');
-    document.getElementById('mobTabTrades').classList.toggle('active', tab === 'trades');
-    document.getElementById('mobTabSettings').classList.toggle('active', tab === 'settings');
-    // 우측 패널 내용 전환
-    document.getElementById('tradesPanel').style.display   = tab === 'trades'   ? '' : 'none';
-    document.getElementById('settingsPanel').style.display = tab === 'settings' ? '' : 'none';
-    document.getElementById('tradesRefreshBtn').style.display = tab === 'trades' ? '' : 'none';
-    if (tab === 'trades') loadTrades();
-    if (tab === 'settings') loadConfig();
+    document.getElementById('mobTabPortfolio').classList.toggle('active', tab === 'portfolio');
+    document.getElementById('mobTabTrades').classList.toggle('active',    tab === 'trades');
+    document.getElementById('mobTabSettings').classList.toggle('active',  tab === 'settings');
+    document.getElementById('portfolioPanel').style.display = tab === 'portfolio' ? '' : 'none';
+    document.getElementById('tradesPanel').style.display    = tab === 'trades'    ? '' : 'none';
+    document.getElementById('settingsPanel').style.display  = tab === 'settings'  ? '' : 'none';
+    document.getElementById('tradesRefreshBtn').style.display = (tab === 'portfolio' || tab === 'trades') ? '' : 'none';
+    if (tab === 'portfolio') loadPortfolio();
+    if (tab === 'trades')    loadTrades();
+    if (tab === 'settings')  loadConfig();
   }
 }
 
@@ -708,12 +770,14 @@ function switchMobTab(tab) {
 makeEventSource('mock');
 makeEventSource('real');
 loadStatus();
+loadPortfolio();
 loadTrades();
 loadSummary();
 loadConfig();
-setInterval(loadStatus,  5000);
-setInterval(loadTrades,  30000);
-setInterval(loadSummary, 30000);
+setInterval(loadStatus,    5000);
+setInterval(loadPortfolio, 30000);
+setInterval(loadTrades,    30000);
+setInterval(loadSummary,   30000);
 </script>
 </body>
 </html>
