@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 import signal
@@ -109,6 +110,18 @@ def _write_env_key(key: str, value: str) -> None:
     if not found:
         new_lines.append(f"{key}={value}")
     env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+
+def _append_settings_history(mode: str, changes: dict) -> None:
+    history_path = _BASE / "logs/settings_history.jsonl"
+    history_path.parent.mkdir(exist_ok=True)
+    entry = {
+        "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
+        "mode": mode,
+        "changes": changes,
+    }
+    with history_path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
 @app.route("/")
@@ -236,52 +249,95 @@ def api_set_strategy():
 
 @app.route("/api/config")
 def api_get_config():
+    mode = _valid_mode(request.args.get("mode", "mock"))
     env = _read_env()
-    return jsonify({
-        "scan_interval_minutes_mock": int(env.get("SCAN_INTERVAL_MINUTES_MOCK", "0")),
-        "scan_interval_minutes_real": int(env.get("SCAN_INTERVAL_MINUTES_REAL", "0")),
-        "mock_budget": int(env.get("MOCK_BUDGET", "500000")),
-        "real_budget": int(env.get("REAL_BUDGET", "500000")),
-        "real_usd_budget": float(env.get("REAL_USD_BUDGET", "750.0")),
-        "max_positions": int(env.get("MAX_POSITIONS", "5")),
-        "order_quantity": int(env.get("ORDER_QUANTITY", "1")),
-        "watchlist": env.get("WATCHLIST", ""),
-        "exclude_list": env.get("EXCLUDE_LIST", ""),
-    })
+    budget = int(env.get("MOCK_BUDGET", "500000")) if mode == "mock" else int(env.get("REAL_BUDGET", "500000"))
+    result = {
+        "mode": mode,
+        "scan_interval_minutes": int(env.get(f"SCAN_INTERVAL_MINUTES_{mode.upper()}", "0")),
+        "budget": budget,
+        "max_positions": int(env.get(f"MAX_POSITIONS_{mode.upper()}", env.get("MAX_POSITIONS", "5"))),
+        "order_quantity": int(env.get(f"ORDER_QUANTITY_{mode.upper()}", env.get("ORDER_QUANTITY", "1"))),
+        "watchlist": env.get(f"WATCHLIST_{mode.upper()}", env.get("WATCHLIST", "")),
+        "exclude_list": env.get(f"EXCLUDE_LIST_{mode.upper()}", env.get("EXCLUDE_LIST", "")),
+    }
+    if mode == "real":
+        result["usd_budget"] = float(env.get("REAL_USD_BUDGET", "750.0"))
+    return jsonify(result)
 
 
 @app.route("/api/config", methods=["POST"])
 def api_set_config():
     data = request.get_json(silent=True) or {}
+    mode = _valid_mode(data.get("mode", "mock"))
+    changes = {}
+
     if "scan_interval_minutes" in data:
-        mode = _valid_mode(data.get("mode", "mock"))
         val = int(data["scan_interval_minutes"])
         if val < 0:
             return jsonify({"ok": False, "error": "유효하지 않은 값"}), 400
         _write_env_key(f"SCAN_INTERVAL_MINUTES_{mode.upper()}", str(val))
-    if "mock_budget" in data:
-        _write_env_key("MOCK_BUDGET", str(int(data["mock_budget"])))
-    if "real_budget" in data:
-        _write_env_key("REAL_BUDGET", str(int(data["real_budget"])))
-    if "real_usd_budget" in data:
-        _write_env_key("REAL_USD_BUDGET", str(float(data["real_usd_budget"])))
+        changes["scan_interval_minutes"] = val
+
+    if "budget" in data:
+        val = int(data["budget"])
+        key = "MOCK_BUDGET" if mode == "mock" else "REAL_BUDGET"
+        _write_env_key(key, str(val))
+        changes["budget"] = val
+
+    if "usd_budget" in data and mode == "real":
+        val = float(data["usd_budget"])
+        _write_env_key("REAL_USD_BUDGET", str(val))
+        changes["usd_budget"] = val
+
     if "max_positions" in data:
         val = int(data["max_positions"])
         if val < 1:
             return jsonify({"ok": False, "error": "최대 보유 종목 수는 1 이상이어야 합니다"}), 400
-        _write_env_key("MAX_POSITIONS", str(val))
+        _write_env_key(f"MAX_POSITIONS_{mode.upper()}", str(val))
+        changes["max_positions"] = val
+
     if "order_quantity" in data:
         val = int(data["order_quantity"])
         if val < 1:
             return jsonify({"ok": False, "error": "주문 수량은 1 이상이어야 합니다"}), 400
-        _write_env_key("ORDER_QUANTITY", str(val))
+        _write_env_key(f"ORDER_QUANTITY_{mode.upper()}", str(val))
+        changes["order_quantity"] = val
+
     if "watchlist" in data:
         cleaned = ",".join(c.strip() for c in str(data["watchlist"]).split(",") if c.strip())
-        _write_env_key("WATCHLIST", cleaned)
+        _write_env_key(f"WATCHLIST_{mode.upper()}", cleaned)
+        changes["watchlist"] = cleaned
+
     if "exclude_list" in data:
         cleaned = ",".join(c.strip() for c in str(data["exclude_list"]).split(",") if c.strip())
-        _write_env_key("EXCLUDE_LIST", cleaned)
+        _write_env_key(f"EXCLUDE_LIST_{mode.upper()}", cleaned)
+        changes["exclude_list"] = cleaned
+
+    if changes:
+        _append_settings_history(mode, changes)
+
     return jsonify({"ok": True})
+
+
+@app.route("/api/settings/history")
+def api_settings_history():
+    mode = _valid_mode(request.args.get("mode", "mock"))
+    history_path = _BASE / "logs/settings_history.jsonl"
+    if not history_path.exists():
+        return jsonify([])
+    records = []
+    for line in history_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            r = json.loads(line)
+            if r.get("mode") == mode:
+                records.append(r)
+        except json.JSONDecodeError:
+            pass
+    return jsonify(list(reversed(records[-50:])))
 
 
 @app.route("/api/trades")
