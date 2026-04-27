@@ -101,12 +101,13 @@ class ConfigurableStrategy(BaseStrategy):
 
     def _eval_sell(self, name: str, cfg: dict, prices: List[Decimal]) -> bool:
         if "데드크로스" in name:
-            # "단기 데드크로스" → "단기 골든크로스" 설정 참조
-            # "장기 데드크로스" → "장기 골든크로스" 설정 참조
-            prefix = "단기" if "단기" in name else "장기"
-            buy_cfg = self._buy.get(f"{prefix} 골든크로스", {})
-            short = buy_cfg.get("단기") or cfg.get("단기")
-            long_ = buy_cfg.get("장기") or cfg.get("장기")
+            short = cfg.get("단기")
+            long_ = cfg.get("장기")
+            if short is None or long_ is None:
+                prefix = "단기" if "단기" in name else "장기"
+                buy_cfg = self._buy.get(f"{prefix} 골든크로스", {})
+                short = short or buy_cfg.get("단기")
+                long_ = long_ or buy_cfg.get("장기")
             if short is None or long_ is None:
                 return False
             s1, l1 = sma(prices, short), sma(prices, long_)
@@ -114,24 +115,21 @@ class ConfigurableStrategy(BaseStrategy):
             return s0 >= l0 and s1 < l1
 
         if "RSI" in name:
-            buy_cfg = self._buy.get("RSI", {})
-            period = buy_cfg.get("기간", cfg.get("기간", 14))
             threshold = Decimal(str(cfg.get("매도 기준 이상", 70)))
+            period = cfg.get("기간") or self._buy.get("RSI", {}).get("기간", 14)
             return rsi(prices, period) >= threshold
 
         if "MACD" in name:
-            buy_cfg = self._buy.get("MACD", {})
-            fast = buy_cfg.get("단기", 12)
-            slow = buy_cfg.get("장기", 26)
-            sig  = buy_cfg.get("시그널", 9)
+            fast = cfg.get("단기") or self._buy.get("MACD", {}).get("단기", 12)
+            slow = cfg.get("장기") or self._buy.get("MACD", {}).get("장기", 26)
+            sig  = cfg.get("시그널") or self._buy.get("MACD", {}).get("시그널", 9)
             m1, s1 = macd(prices, fast, slow, sig)
             m0, s0 = macd(prices[:-1], fast, slow, sig)
-            return m0 >= s0 and m1 < s1  # 데드크로스
+            return m0 >= s0 and m1 < s1
 
         if "볼린저밴드" in name:
-            buy_cfg = self._buy.get("볼린저밴드", {})
-            period = buy_cfg.get("기간", cfg.get("기간", 20))
-            std    = buy_cfg.get("표준편차", cfg.get("표준편차", 2.0))
+            period = cfg.get("기간") or self._buy.get("볼린저밴드", {}).get("기간", 20)
+            std    = cfg.get("표준편차") or self._buy.get("볼린저밴드", {}).get("표준편차", 2.0)
             _, _, upper = bollinger_bands(prices, period, std)
             return prices[-1] >= upper
 

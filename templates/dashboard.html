@@ -178,6 +178,7 @@ header {
   border-bottom: 1px solid #1e1e1e; padding-bottom: 6px;
 }
 .cfg-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.st-params { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .cfg-input {
   width: 80px; padding: 5px 8px;
   background: #1a1a1a; border: 1px solid #333; border-radius: 4px;
@@ -337,6 +338,10 @@ code { color: #60a5fa; font-size: 11px; }
   table { font-size: 11px; min-width: 480px; }
   thead th { padding: 6px 6px; }
   td { padding: 5px 6px; }
+
+  .st-params { width: 100%; padding-left: 4px; margin-top: 2px; }
+  .st-name { min-width: unset; }
+  .cfg-input { width: 60px; font-size: 12px; padding: 4px 6px; }
 }
 </style>
 </head>
@@ -492,52 +497,51 @@ code { color: #60a5fa; font-size: 11px; }
           <label class="cfg-toggle"><input type="checkbox" id="stBuyGc1"><span></span></label>
           <select id="stBuyGc1Cond" class="cfg-select" style="width:52px"><option value="AND">AND</option><option value="OR">OR</option></select>
           <span class="st-name">단기 골든크로스</span>
-          <span class="cfg-hint">단기</span>
-          <input type="number" id="stBuyGc1Short" class="cfg-input" style="width:56px">
-          <span class="cfg-hint">장기</span>
-          <input type="number" id="stBuyGc1Long" class="cfg-input" style="width:56px">
+          <span class="st-params">
+            <span class="cfg-hint">단기</span><input type="number" id="stBuyGc1Short" class="cfg-input" style="width:56px">
+            <span class="cfg-hint">장기</span><input type="number" id="stBuyGc1Long" class="cfg-input" style="width:56px">
+          </span>
         </div>
 
         <div class="cfg-row">
           <label class="cfg-toggle"><input type="checkbox" id="stBuyGc2"><span></span></label>
           <select id="stBuyGc2Cond" class="cfg-select" style="width:52px"><option value="AND">AND</option><option value="OR">OR</option></select>
           <span class="st-name">장기 골든크로스</span>
-          <span class="cfg-hint">단기</span>
-          <input type="number" id="stBuyGc2Short" class="cfg-input" style="width:56px">
-          <span class="cfg-hint">장기</span>
-          <input type="number" id="stBuyGc2Long" class="cfg-input" style="width:56px">
+          <span class="st-params">
+            <span class="cfg-hint">단기</span><input type="number" id="stBuyGc2Short" class="cfg-input" style="width:56px">
+            <span class="cfg-hint">장기</span><input type="number" id="stBuyGc2Long" class="cfg-input" style="width:56px">
+          </span>
         </div>
 
         <div class="cfg-row">
           <label class="cfg-toggle"><input type="checkbox" id="stBuyRsi"><span></span></label>
           <select id="stBuyRsiCond" class="cfg-select" style="width:52px"><option value="AND">AND</option><option value="OR">OR</option></select>
           <span class="st-name">RSI</span>
-          <span class="cfg-hint">기간</span>
-          <input type="number" id="stBuyRsiPer" class="cfg-input" style="width:56px">
-          <span class="cfg-hint">기준이하</span>
-          <input type="number" id="stBuyRsiThr" class="cfg-input" style="width:56px">
+          <span class="st-params">
+            <span class="cfg-hint">기간</span><input type="number" id="stBuyRsiPer" class="cfg-input" style="width:56px">
+            <span class="cfg-hint">기준이하</span><input type="number" id="stBuyRsiThr" class="cfg-input" style="width:56px">
+          </span>
         </div>
 
         <div class="cfg-row">
           <label class="cfg-toggle"><input type="checkbox" id="stBuyMacd"><span></span></label>
           <select id="stBuyMacdCond" class="cfg-select" style="width:52px"><option value="AND">AND</option><option value="OR">OR</option></select>
           <span class="st-name">MACD</span>
-          <span class="cfg-hint">단기</span>
-          <input type="number" id="stBuyMacdS" class="cfg-input" style="width:50px">
-          <span class="cfg-hint">장기</span>
-          <input type="number" id="stBuyMacdL" class="cfg-input" style="width:50px">
-          <span class="cfg-hint">시그널</span>
-          <input type="number" id="stBuyMacdSig" class="cfg-input" style="width:50px">
+          <span class="st-params">
+            <span class="cfg-hint">단기</span><input type="number" id="stBuyMacdS" class="cfg-input" style="width:50px">
+            <span class="cfg-hint">장기</span><input type="number" id="stBuyMacdL" class="cfg-input" style="width:50px">
+            <span class="cfg-hint">시그널</span><input type="number" id="stBuyMacdSig" class="cfg-input" style="width:50px">
+          </span>
         </div>
 
         <div class="cfg-row">
           <label class="cfg-toggle"><input type="checkbox" id="stBuyBb"><span></span></label>
           <select id="stBuyBbCond" class="cfg-select" style="width:52px"><option value="AND">AND</option><option value="OR">OR</option></select>
           <span class="st-name">볼린저밴드</span>
-          <span class="cfg-hint">기간</span>
-          <input type="number" id="stBuyBbPer" class="cfg-input" style="width:56px">
-          <span class="cfg-hint">표준편차</span>
-          <input type="number" id="stBuyBbStd" class="cfg-input" style="width:56px" step="0.1">
+          <span class="st-params">
+            <span class="cfg-hint">기간</span><input type="number" id="stBuyBbPer" class="cfg-input" style="width:56px">
+            <span class="cfg-hint">표준편차</span><input type="number" id="stBuyBbStd" class="cfg-input" style="width:56px" step="0.1">
+          </span>
         </div>
 
         <div style="font-size:11px;color:#ef4444;font-weight:bold;margin:8px 0 6px">▼ 매도 — AND조건 모두 충족 + OR조건 중 하나</div>
@@ -546,32 +550,50 @@ code { color: #60a5fa; font-size: 11px; }
           <label class="cfg-toggle"><input type="checkbox" id="stSellDc1"><span></span></label>
           <select id="stSellDc1Cond" class="cfg-select" style="width:52px"><option value="OR">OR</option><option value="AND">AND</option></select>
           <span class="st-name">단기 데드크로스</span>
+          <span class="st-params">
+            <span class="cfg-hint">단기</span><input type="number" id="stSellDc1Short" class="cfg-input" style="width:56px">
+            <span class="cfg-hint">장기</span><input type="number" id="stSellDc1Long" class="cfg-input" style="width:56px">
+          </span>
         </div>
 
         <div class="cfg-row">
           <label class="cfg-toggle"><input type="checkbox" id="stSellDc2"><span></span></label>
           <select id="stSellDc2Cond" class="cfg-select" style="width:52px"><option value="OR">OR</option><option value="AND">AND</option></select>
           <span class="st-name">장기 데드크로스</span>
+          <span class="st-params">
+            <span class="cfg-hint">단기</span><input type="number" id="stSellDc2Short" class="cfg-input" style="width:56px">
+            <span class="cfg-hint">장기</span><input type="number" id="stSellDc2Long" class="cfg-input" style="width:56px">
+          </span>
         </div>
 
         <div class="cfg-row">
           <label class="cfg-toggle"><input type="checkbox" id="stSellRsi"><span></span></label>
           <select id="stSellRsiCond" class="cfg-select" style="width:52px"><option value="OR">OR</option><option value="AND">AND</option></select>
           <span class="st-name">RSI 과매수</span>
-          <span class="cfg-hint">기준이상</span>
-          <input type="number" id="stSellRsiThr" class="cfg-input" style="width:56px">
+          <span class="st-params">
+            <span class="cfg-hint">기준이상</span><input type="number" id="stSellRsiThr" class="cfg-input" style="width:56px">
+          </span>
         </div>
 
         <div class="cfg-row">
           <label class="cfg-toggle"><input type="checkbox" id="stSellMacd"><span></span></label>
           <select id="stSellMacdCond" class="cfg-select" style="width:52px"><option value="OR">OR</option><option value="AND">AND</option></select>
           <span class="st-name">MACD 데드크로스</span>
+          <span class="st-params">
+            <span class="cfg-hint">단기</span><input type="number" id="stSellMacdS" class="cfg-input" style="width:50px">
+            <span class="cfg-hint">장기</span><input type="number" id="stSellMacdL" class="cfg-input" style="width:50px">
+            <span class="cfg-hint">시그널</span><input type="number" id="stSellMacdSig" class="cfg-input" style="width:50px">
+          </span>
         </div>
 
         <div class="cfg-row">
           <label class="cfg-toggle"><input type="checkbox" id="stSellBb"><span></span></label>
           <select id="stSellBbCond" class="cfg-select" style="width:52px"><option value="OR">OR</option><option value="AND">AND</option></select>
           <span class="st-name">볼린저밴드 상단</span>
+          <span class="st-params">
+            <span class="cfg-hint">기간</span><input type="number" id="stSellBbPer" class="cfg-input" style="width:56px">
+            <span class="cfg-hint">표준편차</span><input type="number" id="stSellBbStd" class="cfg-input" style="width:56px" step="0.1">
+          </span>
         </div>
 
         <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
@@ -916,9 +938,13 @@ function loadStrategy() {
     const dc1 = s['단기 데드크로스'] || {};
     document.getElementById('stSellDc1').checked = !!dc1['활성화'];
     sel('stSellDc1Cond', dc1['조건'], 'OR');
+    document.getElementById('stSellDc1Short').value = dc1['단기'] ?? '';
+    document.getElementById('stSellDc1Long').value  = dc1['장기'] ?? '';
     const dc2 = s['장기 데드크로스'] || {};
     document.getElementById('stSellDc2').checked = !!dc2['활성화'];
     sel('stSellDc2Cond', dc2['조건'], 'OR');
+    document.getElementById('stSellDc2Short').value = dc2['단기'] ?? '';
+    document.getElementById('stSellDc2Long').value  = dc2['장기'] ?? '';
     const srsi = s['RSI 과매수'] || {};
     document.getElementById('stSellRsi').checked = !!srsi['활성화'];
     sel('stSellRsiCond', srsi['조건'], 'OR');
@@ -926,9 +952,14 @@ function loadStrategy() {
     const smacd = s['MACD 데드크로스'] || {};
     document.getElementById('stSellMacd').checked = !!smacd['활성화'];
     sel('stSellMacdCond', smacd['조건'], 'OR');
+    document.getElementById('stSellMacdS').value   = smacd['단기'] ?? '';
+    document.getElementById('stSellMacdL').value   = smacd['장기'] ?? '';
+    document.getElementById('stSellMacdSig').value = smacd['시그널'] ?? '';
     const sbb = s['볼린저밴드 상단'] || {};
     document.getElementById('stSellBb').checked = !!sbb['활성화'];
     sel('stSellBbCond', sbb['조건'], 'OR');
+    document.getElementById('stSellBbPer').value = sbb['기간'] ?? '';
+    document.getElementById('stSellBbStd').value = sbb['표준편차'] ?? '';
   }).catch(() => {});
 }
 
@@ -946,11 +977,11 @@ function saveStrategy() {
       '볼린저밴드':     { '활성화': ck('stBuyBb'),   '조건': sv('stBuyBbCond'),   '기간': ni('stBuyBbPer'), '표준편차': nf('stBuyBbStd') },
     },
     sell: {
-      '단기 데드크로스':  { '활성화': ck('stSellDc1'),  '조건': sv('stSellDc1Cond') },
-      '장기 데드크로스':  { '활성화': ck('stSellDc2'),  '조건': sv('stSellDc2Cond') },
-      'RSI 과매수':       { '활성화': ck('stSellRsi'),  '조건': sv('stSellRsiCond'),  '매도 기준 이상': ni('stSellRsiThr') },
-      'MACD 데드크로스':  { '활성화': ck('stSellMacd'), '조건': sv('stSellMacdCond') },
-      '볼린저밴드 상단':  { '활성화': ck('stSellBb'),   '조건': sv('stSellBbCond') },
+      '단기 데드크로스':  { '활성화': ck('stSellDc1'),  '조건': sv('stSellDc1Cond'),  '단기': ni('stSellDc1Short'), '장기': ni('stSellDc1Long') },
+      '장기 데드크로스':  { '활성화': ck('stSellDc2'),  '조건': sv('stSellDc2Cond'),  '단기': ni('stSellDc2Short'), '장기': ni('stSellDc2Long') },
+      'RSI 과매수':       { '활성화': ck('stSellRsi'),  '조건': sv('stSellRsiCond'),   '매도 기준 이상': ni('stSellRsiThr') },
+      'MACD 데드크로스':  { '활성화': ck('stSellMacd'), '조건': sv('stSellMacdCond'),  '단기': ni('stSellMacdS'), '장기': ni('stSellMacdL'), '시그널': ni('stSellMacdSig') },
+      '볼린저밴드 상단':  { '활성화': ck('stSellBb'),   '조건': sv('stSellBbCond'),    '기간': ni('stSellBbPer'), '표준편차': nf('stSellBbStd') },
     },
   };
   const msg = document.getElementById('stMsg');
