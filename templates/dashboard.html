@@ -58,6 +58,7 @@ header {
 .btn-deploy { background: #1d4ed8; color: #fff; }
 .btn-deploy:hover:not(:disabled) { background: #2563eb; }
 .btn-spin::after { content: ' …'; }
+.mode-grp .btn-bot { padding: 2px 7px; font-size: 11px; }
 
 /* ── Stats bar ── */
 .stats {
@@ -298,16 +299,18 @@ code { color: #60a5fa; font-size: 11px; }
     <span class="dot off" id="dotMock"></span>
     <span class="mode-lbl mock-lbl">MOCK</span>
     <span class="pid" id="pidMock"></span>
+    <button class="btn-bot btn-start" id="btnStartMock" onclick="botStart('mock')">▶</button>
+    <button class="btn-bot btn-stop"  id="btnStopMock"  onclick="botStop('mock')">■</button>
   </span>
   <span class="mode-grp">
     <span class="dot off" id="dotReal"></span>
     <span class="mode-lbl real-lbl">REAL</span>
     <span class="pid" id="pidReal"></span>
+    <button class="btn-bot btn-start" id="btnStartReal" onclick="botStart('real')">▶</button>
+    <button class="btn-bot btn-stop"  id="btnStopReal"  onclick="botStop('real')">■</button>
   </span>
   <div class="bot-controls">
     <button class="btn-bot btn-deploy" id="btnDeploy" onclick="botDeploy()">🚀 배포</button>
-    <button class="btn-bot btn-start" id="btnStart" onclick="botStart()">▶ 시작</button>
-    <button class="btn-bot btn-stop"  id="btnStop"  onclick="botStop()">■ 정지</button>
   </div>
   <span class="ts" id="lastTs" style="margin-left:8px"></span>
 </header>
@@ -427,24 +430,28 @@ function onModeChange(v) {
   loadSummary();
 }
 
-// ── 버튼 상태 (현재 활성 탭 기준) ──────────────────
+// ── 버튼 상태 (mock/real 각각 독립) ──────────────────
 function setButtons() {
-  const m  = activeLogTab;
-  const run = botStatus[m].running;
-  const sp  = spinning[m];
-  const bs = document.getElementById('btnStart');
-  const bx = document.getElementById('btnStop');
+  ['mock', 'real'].forEach(m => {
+    const run = botStatus[m].running;
+    const sp  = spinning[m];
+    const suffix = m[0].toUpperCase() + m.slice(1);
+    const bs = document.getElementById('btnStart' + suffix);
+    const bx = document.getElementById('btnStop'  + suffix);
+    if (!bs || !bx) return;
+    bs.disabled = run || sp;
+    bx.disabled = !run || sp;
+    bs.classList.toggle('btn-spin', sp && !run);
+    bx.classList.toggle('btn-spin', sp && run);
+  });
+  const anySpin = spinning.mock || spinning.real;
   const bd = document.getElementById('btnDeploy');
-  bs.disabled = run || sp;
-  bx.disabled = !run || sp;
-  bd.disabled = sp;
-  bs.classList.toggle('btn-spin', sp && !run);
-  bx.classList.toggle('btn-spin', sp && run);
-  bd.classList.toggle('btn-spin', sp);
-  bd.textContent = sp ? '🚀 배포 중' : '🚀 배포';
+  bd.disabled = anySpin;
+  bd.classList.toggle('btn-spin', anySpin);
+  bd.textContent = anySpin ? '🚀 배포 중' : '🚀 배포';
 }
 
-// ── 봇 제어 (active tab 모드로) ────────────────────
+// ── 봇 제어 ────────────────────────────────────────
 function _post(url, mode) {
   return fetch(url, {
     method: 'POST',
@@ -453,8 +460,7 @@ function _post(url, mode) {
   }).then(r => r.json());
 }
 
-function botStart() {
-  const mode = activeLogTab;
+function botStart(mode) {
   spinning[mode] = true; setButtons();
   appendLog(mode, `[대시보드] ${mode.toUpperCase()} 봇 시작 요청...`);
   _post('/api/bot/start', mode)
@@ -465,8 +471,7 @@ function botStart() {
     .catch(e => { appendLog(mode, '오류: ' + e); spinning[mode] = false; setButtons(); });
 }
 
-function botStop() {
-  const mode = activeLogTab;
+function botStop(mode) {
   spinning[mode] = true; setButtons();
   appendLog(mode, `[대시보드] ${mode.toUpperCase()} 봇 정지 요청...`);
   _post('/api/bot/stop', mode)
