@@ -457,83 +457,70 @@ code { color: #60a5fa; font-size: 11px; }
 
     <!-- 설정 -->
     <div class="settings-wrap" id="settingsPanel" style="display:none">
+      <!-- 통합 설정 -->
       <div class="cfg-section">
-        <div class="cfg-title">스캔 주기</div>
-        <div class="cfg-hint" style="color:#444;margin-bottom:6px">0 입력 시 고정 시간(국내 09:05 / 나스닥 23:35)으로 동작</div>
-
-        <div class="cfg-row">
-          <span style="font-size:11px;color:#a78bfa;font-weight:bold;width:36px">MOCK</span>
-          <input  type="number" id="cfgIntervalValMock" class="cfg-input" min="0" max="9999" placeholder="주기">
-          <select id="cfgUnitMock" class="cfg-select">
-            <option value="1">분</option>
-            <option value="60">시간</option>
-            <option value="1440">일</option>
+        <div class="cfg-title" style="display:flex;align-items:center;gap:8px">
+          <span>설정</span>
+          <select id="settingsMode" class="cfg-select" onchange="loadSettings()" style="font-size:11px;padding:2px 6px">
+            <option value="mock">MOCK</option>
+            <option value="real">REAL</option>
           </select>
-          <button class="cfg-save" onclick="saveConfig('mock')">저장</button>
-          <span class="cfg-hint">현재: <span id="cfgCurrentMock">—</span></span>
+          <span style="font-size:10px;color:#444">모드별 독립 저장</span>
+        </div>
+
+        <div style="margin-top:10px">
+          <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px">스캔 주기 <span style="font-weight:normal;text-transform:none;color:#333">0 = 고정시간(국내 09:05 / 나스닥 23:35)</span></div>
+          <div class="cfg-row">
+            <input type="number" id="cfgIntervalVal" class="cfg-input" min="0" max="9999" placeholder="0">
+            <select id="cfgUnit" class="cfg-select">
+              <option value="1">분</option>
+              <option value="60">시간</option>
+              <option value="1440">일</option>
+            </select>
+            <span class="cfg-hint">현재: <span id="cfgCurrent">—</span></span>
+          </div>
+        </div>
+
+        <div style="margin-top:10px">
+          <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px">예산</div>
+          <div class="cfg-row">
+            <input type="number" id="cfgBudget" class="cfg-input" style="width:130px" min="0" placeholder="KRW">
+            <span class="cfg-hint">원</span>
+            <span id="cfgUsdBudgetRow" style="margin-left:8px;display:none">
+              <input type="number" id="cfgUsdBudget" class="cfg-input" style="width:90px" min="0" step="0.01" placeholder="USD">
+              <span class="cfg-hint">USD</span>
+            </span>
+          </div>
         </div>
 
         <div class="cfg-row" style="margin-top:8px">
-          <span style="font-size:11px;color:#4ade80;font-weight:bold;width:36px">REAL</span>
-          <input  type="number" id="cfgIntervalValReal" class="cfg-input" min="0" max="9999" placeholder="주기">
-          <select id="cfgUnitReal" class="cfg-select">
-            <option value="1">분</option>
-            <option value="60">시간</option>
-            <option value="1440">일</option>
-          </select>
-          <button class="cfg-save" onclick="saveConfig('real')">저장</button>
-          <span class="cfg-hint">현재: <span id="cfgCurrentReal">—</span></span>
-        </div>
-
-        <div class="cfg-msg" id="cfgMsg"></div>
-      </div>
-
-      <!-- 예산 설정 -->
-      <div class="cfg-section">
-        <div class="cfg-title">예산 / 주문 설정</div>
-
-        <div class="cfg-row">
-          <span style="font-size:11px;color:#a78bfa;font-weight:bold;width:80px">MOCK 예산</span>
-          <input type="number" id="cfgMockBudget" class="cfg-input" style="width:120px" min="0" placeholder="원">
-          <span class="cfg-hint">원</span>
-        </div>
-
-        <div class="cfg-row" style="margin-top:6px">
-          <span style="font-size:11px;color:#4ade80;font-weight:bold;width:80px">REAL 예산</span>
-          <input type="number" id="cfgRealBudget" class="cfg-input" style="width:120px" min="0" placeholder="원">
-          <span class="cfg-hint">원</span>
-          <input type="number" id="cfgRealUsdBudget" class="cfg-input" style="width:90px" min="0" step="0.01" placeholder="USD">
-          <span class="cfg-hint">USD</span>
-        </div>
-
-        <div class="cfg-row" style="margin-top:6px">
-          <span style="font-size:11px;color:#888;width:80px">최대 보유</span>
+          <span style="font-size:11px;color:#888;width:60px">최대 보유</span>
           <input type="number" id="cfgMaxPositions" class="cfg-input" style="width:70px" min="1" max="100" placeholder="종목수">
           <span class="cfg-hint">종목</span>
           <span style="font-size:11px;color:#555;margin-left:12px">주문 수량</span>
           <input type="number" id="cfgOrderQty" class="cfg-input" style="width:70px" min="1" placeholder="주">
-          <span class="cfg-hint">주 (mock)</span>
+          <span class="cfg-hint" id="cfgOrderQtyHint">주</span>
         </div>
 
         <div style="margin-top:10px">
-          <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">스캔 종목 <span style="color:#333;font-weight:normal;text-transform:none">(종목코드 쉼표 구분 — 비워두면 자동 스캔)</span></div>
-          <textarea id="cfgWatchlist" rows="3"
+          <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">스캔 종목 <span style="color:#333;font-weight:normal;text-transform:none">(비워두면 자동 스캔)</span></div>
+          <textarea id="cfgWatchlist" rows="2"
             style="width:100%;background:#1a1a1a;border:1px solid #333;border-radius:4px;
                    color:#d4d4d4;font-family:inherit;font-size:12px;padding:6px 8px;resize:vertical"
             placeholder="005930,000660,035720"></textarea>
         </div>
 
-        <div style="margin-top:10px">
-          <div style="font-size:10px;color:#e87070;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">제외 종목 <span style="color:#555;font-weight:normal;text-transform:none">(거래하지 않을 종목코드 — mock/real 공통 적용)</span></div>
+        <div style="margin-top:8px">
+          <div style="font-size:10px;color:#e87070;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">제외 종목 <span style="color:#555;font-weight:normal;text-transform:none">(거래하지 않을 종목코드)</span></div>
           <textarea id="cfgExcludeList" rows="2"
             style="width:100%;background:#1a1a1a;border:1px solid #4a2020;border-radius:4px;
                    color:#e87070;font-family:inherit;font-size:12px;padding:6px 8px;resize:vertical"
-            placeholder="012340,000660"></textarea>
+            placeholder="012340"></textarea>
         </div>
 
-        <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
-          <button class="cfg-save" onclick="saveBudget()">저장</button>
-          <div class="cfg-msg" id="budgetMsg"></div>
+        <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+          <button class="cfg-save" onclick="saveSettings()">저장</button>
+          <div class="cfg-msg" id="settingsMsg"></div>
         </div>
       </div>
 
@@ -657,6 +644,15 @@ code { color: #60a5fa; font-size: 11px; }
           <button class="cfg-save" onclick="saveStrategy()">전략 저장</button>
           <div class="cfg-msg" id="stMsg"></div>
         </div>
+      </div>
+
+      <!-- 설정 변경 히스토리 -->
+      <div class="cfg-section">
+        <div class="cfg-title" style="display:flex;align-items:center;gap:8px">
+          <span>변경 히스토리</span>
+          <span style="font-size:10px;color:#444">최근 50건 · 현재 모드 기준</span>
+        </div>
+        <div id="settingsHistory" style="display:flex;flex-direction:column;gap:0;max-height:200px;overflow-y:auto;margin-top:6px"></div>
       </div>
     </div>
   </div>
@@ -887,7 +883,7 @@ function switchRightTab(tab) {
   document.getElementById('rtabPortfolio').classList.toggle('active', tab === 'portfolio');
   document.getElementById('rtabTrades').classList.toggle('active',    tab === 'trades');
   document.getElementById('rtabSettings').classList.toggle('active',  tab === 'settings');
-  if (tab === 'settings')  { loadConfig(); loadStrategy(); }
+  if (tab === 'settings')  { loadSettings(); loadStrategy(); }
   if (tab === 'portfolio') loadPortfolio();
   if (tab === 'trades')    loadTrades();
 }
@@ -933,72 +929,95 @@ function loadPortfolio() {
 }
 
 // ── 설정 ──────────────────────────────────────────
-function loadConfig() {
-  fetch('/api/config').then(r => r.json()).then(d => {
-    [['mock', d.scan_interval_minutes_mock], ['real', d.scan_interval_minutes_real]].forEach(([m, mins]) => {
-      const suffix = m[0].toUpperCase() + m.slice(1);
-      mins = mins || 0;
-      let label;
-      if (mins === 0) {
-        document.getElementById('cfgIntervalVal' + suffix).value = '';
-        document.getElementById('cfgUnit' + suffix).value = '1';
-        label = '고정 시간';
-      } else if (mins % 1440 === 0) {
-        document.getElementById('cfgIntervalVal' + suffix).value = mins / 1440;
-        document.getElementById('cfgUnit' + suffix).value = '1440';
-        label = `${mins / 1440}일마다`;
-      } else if (mins % 60 === 0) {
-        document.getElementById('cfgIntervalVal' + suffix).value = mins / 60;
-        document.getElementById('cfgUnit' + suffix).value = '60';
-        label = `${mins / 60}시간마다`;
-      } else {
-        document.getElementById('cfgIntervalVal' + suffix).value = mins;
-        document.getElementById('cfgUnit' + suffix).value = '1';
-        label = `${mins}분마다`;
-      }
-      document.getElementById('cfgCurrent' + suffix).textContent = label;
-    });
-    const mb = document.getElementById('cfgMockBudget');
-    const rb = document.getElementById('cfgRealBudget');
-    const ru = document.getElementById('cfgRealUsdBudget');
-    const mp = document.getElementById('cfgMaxPositions');
-    const oq = document.getElementById('cfgOrderQty');
-    const wl = document.getElementById('cfgWatchlist');
-    const el = document.getElementById('cfgExcludeList');
-    if (mb) mb.value = d.mock_budget ?? '';
-    if (rb) rb.value = d.real_budget ?? '';
-    if (ru) ru.value = d.real_usd_budget ?? '';
-    if (mp) mp.value = d.max_positions ?? '';
-    if (oq) oq.value = d.order_quantity ?? '';
-    if (wl) wl.value = d.watchlist ?? '';
-    if (el) el.value = d.exclude_list ?? '';
+function loadSettings() {
+  const mode = document.getElementById('settingsMode').value;
+  fetch('/api/config?mode=' + mode).then(r => r.json()).then(d => {
+    const mins = d.scan_interval_minutes || 0;
+    let label;
+    if (mins === 0) {
+      document.getElementById('cfgIntervalVal').value = '';
+      document.getElementById('cfgUnit').value = '1';
+      label = '고정 시간';
+    } else if (mins % 1440 === 0) {
+      document.getElementById('cfgIntervalVal').value = mins / 1440;
+      document.getElementById('cfgUnit').value = '1440';
+      label = `${mins / 1440}일마다`;
+    } else if (mins % 60 === 0) {
+      document.getElementById('cfgIntervalVal').value = mins / 60;
+      document.getElementById('cfgUnit').value = '60';
+      label = `${mins / 60}시간마다`;
+    } else {
+      document.getElementById('cfgIntervalVal').value = mins;
+      document.getElementById('cfgUnit').value = '1';
+      label = `${mins}분마다`;
+    }
+    document.getElementById('cfgCurrent').textContent = label;
+    document.getElementById('cfgBudget').value = d.budget ?? '';
+    const usdRow = document.getElementById('cfgUsdBudgetRow');
+    if (mode === 'real') {
+      usdRow.style.display = '';
+      document.getElementById('cfgUsdBudget').value = d.usd_budget ?? '';
+    } else {
+      usdRow.style.display = 'none';
+    }
+    document.getElementById('cfgMaxPositions').value = d.max_positions ?? '';
+    document.getElementById('cfgOrderQty').value = d.order_quantity ?? '';
+    document.getElementById('cfgWatchlist').value = d.watchlist ?? '';
+    document.getElementById('cfgExcludeList').value = d.exclude_list ?? '';
   }).catch(() => {});
+  loadSettingsHistory();
 }
 
-function saveBudget() {
-  const msg = document.getElementById('budgetMsg');
-  const mb = parseInt(document.getElementById('cfgMockBudget').value) || 0;
-  const rb = parseInt(document.getElementById('cfgRealBudget').value) || 0;
-  const ru = parseFloat(document.getElementById('cfgRealUsdBudget').value) || 0;
+function saveSettings() {
+  const mode = document.getElementById('settingsMode').value;
+  const raw  = parseInt(document.getElementById('cfgIntervalVal').value) || 0;
+  const unit = parseInt(document.getElementById('cfgUnit').value);
+  const mins = raw * unit;
+  const budget = parseInt(document.getElementById('cfgBudget').value) || 0;
   const mp = parseInt(document.getElementById('cfgMaxPositions').value) || 0;
   const oq = parseInt(document.getElementById('cfgOrderQty').value) || 0;
   const wl = document.getElementById('cfgWatchlist').value.trim();
   const el = document.getElementById('cfgExcludeList').value.trim();
-  const payload = { watchlist: wl, exclude_list: el };
-  if (mb > 0) payload.mock_budget = mb;
-  if (rb > 0) payload.real_budget = rb;
-  if (ru > 0) payload.real_usd_budget = ru;
+  const msg = document.getElementById('settingsMsg');
+  const payload = { mode, scan_interval_minutes: mins, watchlist: wl, exclude_list: el };
+  if (budget > 0) payload.budget = budget;
   if (mp > 0) payload.max_positions = mp;
   if (oq > 0) payload.order_quantity = oq;
+  if (mode === 'real') {
+    const usd = parseFloat(document.getElementById('cfgUsdBudget').value) || 0;
+    if (usd > 0) payload.usd_budget = usd;
+  }
   fetch('/api/config', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   }).then(r => r.json()).then(d => {
     msg.className = 'cfg-msg ' + (d.ok ? 'ok' : 'err');
-    msg.textContent = d.ok ? '저장됨 — 봇 재시작 시 적용됩니다' : (d.error || '저장 실패');
+    msg.textContent = d.ok ? `[${mode.toUpperCase()}] 저장됨 — 봇 재시작 시 적용됩니다` : (d.error || '저장 실패');
+    if (d.ok) loadSettings();
     setTimeout(() => { msg.textContent = ''; }, 3000);
   }).catch(() => { msg.className = 'cfg-msg err'; msg.textContent = '서버 오류'; });
+}
+
+function loadSettingsHistory() {
+  const mode = document.getElementById('settingsMode').value;
+  fetch('/api/settings/history?mode=' + mode).then(r => r.json()).then(records => {
+    const container = document.getElementById('settingsHistory');
+    container.innerHTML = '';
+    if (!records.length) {
+      container.innerHTML = '<span style="font-size:11px;color:#444">변경 내역 없음</span>';
+      return;
+    }
+    records.forEach(r => {
+      const changes = Object.entries(r.changes)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join('  ·  ');
+      const div = document.createElement('div');
+      div.style.cssText = 'font-size:11px;color:#666;border-bottom:1px solid #1a1a1a;padding:4px 0;line-height:1.5';
+      div.innerHTML = `<span style="color:#3f3f3f">${r.timestamp}</span>  <span style="color:#aaa">${changes}</span>`;
+      container.appendChild(div);
+    });
+  }).catch(() => {});
 }
 
 // ── 전략 조건 ──────────────────────────────────────
@@ -1096,28 +1115,6 @@ function saveStrategy() {
   }).catch(() => { msg.className = 'cfg-msg err'; msg.textContent = '서버 오류'; });
 }
 
-function saveConfig(mode) {
-  const suffix = mode[0].toUpperCase() + mode.slice(1);
-  const raw  = parseInt(document.getElementById('cfgIntervalVal' + suffix).value) || 0;
-  const unit = parseInt(document.getElementById('cfgUnit' + suffix).value);
-  const mins = raw * unit;
-  const msg  = document.getElementById('cfgMsg');
-  fetch('/api/config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode, scan_interval_minutes: mins }),
-  }).then(r => r.json()).then(d => {
-    if (d.ok) {
-      msg.className = 'cfg-msg ok';
-      msg.textContent = `${mode.toUpperCase()} 저장됨 — 봇 재시작 시 적용됩니다`;
-      loadConfig();
-    } else {
-      msg.className = 'cfg-msg err';
-      msg.textContent = d.error || '저장 실패';
-    }
-    setTimeout(() => { msg.textContent = ''; }, 3000);
-  }).catch(() => { msg.className = 'cfg-msg err'; msg.textContent = '서버 오류'; });
-}
 
 // ── 모바일 탭 ──────────────────────────────────────
 function switchMobTab(tab) {
@@ -1142,7 +1139,7 @@ function switchMobTab(tab) {
     document.getElementById('tradesRefreshBtn').style.display = (tab === 'portfolio' || tab === 'trades') ? '' : 'none';
     if (tab === 'portfolio') loadPortfolio();
     if (tab === 'trades')    loadTrades();
-    if (tab === 'settings')  { loadConfig(); loadStrategy(); }
+    if (tab === 'settings')  { loadSettings(); loadStrategy(); }
   }
 }
 
@@ -1153,7 +1150,7 @@ loadStatus();
 loadPortfolio();
 loadTrades();
 loadSummary();
-loadConfig();
+loadSettings();
 setInterval(loadStatus,    5000);
 setInterval(loadPortfolio, 30000);
 setInterval(loadTrades,    30000);
