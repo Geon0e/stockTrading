@@ -135,12 +135,14 @@ def _run_domestic_cycle(ctx: dict, token: str) -> int:
         name  = get_stock_name(stock_code)
         label = f"{stock_code}({name})" if name else stock_code
 
-        # 손절: 매입가 대비 stop_loss_pct% 이상 하락 시 매도 (수익률 +20% 초과 종목 제외)
+        # 손절: 매입가 대비 stop_loss_pct% 이상 하락 시 매도 (+20% 초과 또는 -20% 초과 손실 종목 제외)
         stop_loss_pct = config.stop_loss_pct
         if stop_loss_pct > 0 and avg_price > 0:
             profit_pct = (current_price - avg_price) / avg_price * 100
             if profit_pct > 20:
                 logger.debug(f"손절 스킵 (수익률 {profit_pct:.1f}% > 20%): {label}")
+            elif profit_pct <= -20:
+                logger.info(f"손절 스킵 (손실 {profit_pct:.1f}% > 20%): {label}")
             elif profit_pct <= -stop_loss_pct:
                 result = ctx["order_client"].sell(stock_code, qty, token)
                 ctx["trade_logger"].log("SELL", stock_code, qty, result, signal_type="손절")
@@ -227,12 +229,14 @@ def _run_nasdaq_cycle(ctx: dict, token: str) -> int:
         name  = get_stock_name(symbol)
         label = f"{symbol}({name})" if name else symbol
 
-        # 손절: 매입가 대비 stop_loss_pct% 이상 하락 시 매도 (수익률 +20% 초과 종목 제외)
+        # 손절: 매입가 대비 stop_loss_pct% 이상 하락 시 매도 (+20% 초과 또는 -20% 초과 손실 종목 제외)
         stop_loss_pct = config.stop_loss_pct
         if stop_loss_pct > 0 and avg_price > 0:
             profit_pct = (current_price - avg_price) / avg_price * 100
             if profit_pct > 20:
                 logger.debug(f"손절 스킵 (수익률 {profit_pct:.1f}% > 20%): {label}")
+            elif profit_pct <= -20:
+                logger.info(f"손절 스킵 (손실 {profit_pct:.1f}% > 20%): {label}")
             elif profit_pct <= -stop_loss_pct:
                 result = ctx["order_client"].sell_overseas(symbol, info["exchange"], info["qty"], token)
                 ctx["trade_logger"].log("SELL", symbol, info["qty"], result, signal_type="손절")
@@ -324,6 +328,9 @@ def run_stop_loss_check(ctx: dict) -> None:
             profit_pct = (current_price - avg_price) / avg_price * 100
             if profit_pct > 20:
                 logger.debug(f"손절 스킵 (수익률 {profit_pct:.1f}% > 20%): {stock_code}")
+                continue
+            if profit_pct <= -20:
+                logger.debug(f"손절 스킵 (손실 {profit_pct:.1f}% > 20%): {stock_code}")
                 continue
             if profit_pct <= -config.stop_loss_pct:
                 qty   = info["qty"]
