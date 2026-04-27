@@ -53,51 +53,34 @@ def _pid_alive(pid: int) -> bool:
 
 def _kill_bot(mode: str) -> tuple:
     pid_file = _BASE / f".bot.{mode}.pid"
-
-    # Collect PIDs to kill: pid file entry + any orphaned main.py processes
-    pids_to_kill = set()
-    if pid_file.exists():
-        try:
-            pids_to_kill.add(int(pid_file.read_text().strip()))
-        except ValueError:
-            pass
+    if not pid_file.exists():
+        return True, "이미 정지됨"
 
     try:
-        result = subprocess.run(
-            ["pgrep", "-f", "python.*main\\.py"],
-            capture_output=True, text=True
-        )
-        for line in result.stdout.splitlines():
-            try:
-                pids_to_kill.add(int(line.strip()))
-            except ValueError:
-                pass
-    except Exception:
-        pass
-
-    if not pids_to_kill:
+        pid = int(pid_file.read_text().strip())
+    except ValueError:
         pid_file.unlink(missing_ok=True)
         return True, "이미 정지됨"
 
-    for pid in pids_to_kill:
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except (ProcessLookupError, Exception):
-            pass
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pid_file.unlink(missing_ok=True)
+        return True, "이미 정지됨"
+    except Exception as e:
+        return False, str(e)
 
-    # Poll until confirmed dead (up to 5s), then SIGKILL survivors
-    alive = pids_to_kill.copy()
+    # Poll until confirmed dead (up to 5s), then SIGKILL
     deadline = time.time() + 5
-    while time.time() < deadline and alive:
+    while time.time() < deadline:
         time.sleep(0.2)
-        alive = {p for p in alive if _pid_alive(p)}
-
-    for pid in alive:
+        if not _pid_alive(pid):
+            break
+    else:
         try:
             os.kill(pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-    if alive:
         time.sleep(0.5)
 
     pid_file.unlink(missing_ok=True)

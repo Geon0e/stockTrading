@@ -3,7 +3,12 @@ import os
 from dataclasses import dataclass
 from dotenv import load_dotenv
 
+# TRADING_MODE is set by start.sh at launch — preserve it so real/mock bots
+# are not overwritten by the TRADING_MODE=mock default in .env.
+_trading_mode_before = os.environ.get("TRADING_MODE")
 load_dotenv(override=True)
+if _trading_mode_before is not None:
+    os.environ["TRADING_MODE"] = _trading_mode_before
 
 _MOCK = {
     "base_url": "https://openapivts.koreainvestment.com:29443",
