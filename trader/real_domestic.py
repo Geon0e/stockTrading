@@ -66,8 +66,12 @@ def run_real_domestic_cycle(ctx: dict, token: str) -> int:
                 )
                 continue
 
-        # 전략 매도 신호
-        if ctx["strategy"].should_sell(prices):
+        # 전략 매도 신호 (손실 중인 종목은 데드크로스 매도 제외)
+        in_loss = avg_price > 0 and current_price < avg_price
+        if in_loss and ctx["strategy"].should_sell(prices):
+            profit_pct = (current_price - avg_price) / avg_price * 100
+            logger.info(f"[실전] 전략 매도 스킵 (손실 중 {profit_pct:.1f}%): {label}")
+        elif ctx["strategy"].should_sell(prices):
             result = ctx["order_client"].sell(stock_code, qty, token)
             ctx["trade_logger"].log("SELL", stock_code, qty, result)
             del holdings[stock_code]

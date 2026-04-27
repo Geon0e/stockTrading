@@ -419,10 +419,11 @@ def main() -> None:
         f"스케줄: 국내 09:05 / 나스닥 23:35{budget_info}"
     )
 
-    strategy_path = "STRATEGY.md"
+    mode_strategy_path = f"STRATEGY_{config.mode.upper()}.md"
+    strategy_path = mode_strategy_path if os.path.exists(mode_strategy_path) else "STRATEGY.md"
     if os.path.exists(strategy_path):
         strategy = ConfigurableStrategy(load_strategy_config(strategy_path))
-        logger.info("전략: STRATEGY.md 로드")
+        logger.info(f"전략: {strategy_path} 로드")
     else:
         strategy = MaCrossStrategy(config.ma_short_period, config.ma_long_period)
         logger.info(f"전략: MA 골든크로스 ({config.ma_short_period}/{config.ma_long_period})")

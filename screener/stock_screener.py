@@ -23,10 +23,15 @@ class StockScreener:
     def scan(self, token: str, all_stocks: bool = False, top_n: int = 100) -> List[Dict]:
         """골든크로스 조건에 맞는 종목 반환.
 
+        watchlist 설정 시 해당 종목만 스캔.
         all_stocks=True : KOSPI + KOSDAQ 전종목 스캔 (~2,500개)
         all_stocks=False: 거래량 상위 top_n개만 스캔
         """
-        if all_stocks:
+        watchlist = list(self._config.watchlist)
+        if watchlist:
+            codes = watchlist
+            logger.info(f"워치리스트 스캔: {len(codes)}개 종목")
+        elif all_stocks:
             codes = fetch_all_stock_codes()
         else:
             codes = self._fetch_volume_top(token, top_n)

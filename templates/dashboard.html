@@ -487,9 +487,48 @@ code { color: #60a5fa; font-size: 11px; }
         <div class="cfg-msg" id="cfgMsg"></div>
       </div>
 
+      <!-- 예산 설정 -->
+      <div class="cfg-section">
+        <div class="cfg-title">예산 설정</div>
+
+        <div class="cfg-row">
+          <span style="font-size:11px;color:#a78bfa;font-weight:bold;width:80px">MOCK 예산</span>
+          <input type="number" id="cfgMockBudget" class="cfg-input" style="width:120px" min="0" placeholder="원">
+          <span class="cfg-hint">원</span>
+        </div>
+
+        <div class="cfg-row" style="margin-top:6px">
+          <span style="font-size:11px;color:#4ade80;font-weight:bold;width:80px">REAL 예산</span>
+          <input type="number" id="cfgRealBudget" class="cfg-input" style="width:120px" min="0" placeholder="원">
+          <span class="cfg-hint">원</span>
+          <input type="number" id="cfgRealUsdBudget" class="cfg-input" style="width:90px" min="0" step="0.01" placeholder="USD">
+          <span class="cfg-hint">USD</span>
+        </div>
+
+        <div style="margin-top:10px">
+          <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">스캔 종목 <span style="color:#333;font-weight:normal;text-transform:none">(종목코드 쉼표 구분 — 비워두면 자동 스캔)</span></div>
+          <textarea id="cfgWatchlist" rows="3"
+            style="width:100%;background:#1a1a1a;border:1px solid #333;border-radius:4px;
+                   color:#d4d4d4;font-family:inherit;font-size:12px;padding:6px 8px;resize:vertical"
+            placeholder="005930,000660,035720"></textarea>
+        </div>
+
+        <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+          <button class="cfg-save" onclick="saveBudget()">저장</button>
+          <div class="cfg-msg" id="budgetMsg"></div>
+        </div>
+      </div>
+
       <!-- 전략 조건 -->
       <div class="cfg-section">
-        <div class="cfg-title">전략 조건</div>
+        <div class="cfg-title" style="display:flex;align-items:center;gap:8px">
+          <span>전략 조건</span>
+          <select id="strategyMode" class="cfg-select" onchange="loadStrategy()" style="font-size:11px;padding:2px 6px">
+            <option value="mock">MOCK</option>
+            <option value="real">REAL</option>
+          </select>
+          <span style="font-size:10px;color:#444">모드별 독립 저장</span>
+        </div>
 
         <div style="font-size:11px;color:#4ade80;font-weight:bold;margin:2px 0 6px">▲ 매수 — 활성화된 조건을 모두 충족할 때</div>
 
@@ -901,12 +940,38 @@ function loadConfig() {
       }
       document.getElementById('cfgCurrent' + suffix).textContent = label;
     });
+    const mb = document.getElementById('cfgMockBudget');
+    const rb = document.getElementById('cfgRealBudget');
+    const ru = document.getElementById('cfgRealUsdBudget');
+    const wl = document.getElementById('cfgWatchlist');
+    if (mb) mb.value = d.mock_budget ?? '';
+    if (rb) rb.value = d.real_budget ?? '';
+    if (ru) ru.value = d.real_usd_budget ?? '';
+    if (wl) wl.value = d.watchlist ?? '';
   }).catch(() => {});
+}
+
+function saveBudget() {
+  const msg = document.getElementById('budgetMsg');
+  const mb = parseInt(document.getElementById('cfgMockBudget').value) || 0;
+  const rb = parseInt(document.getElementById('cfgRealBudget').value) || 0;
+  const ru = parseFloat(document.getElementById('cfgRealUsdBudget').value) || 0;
+  const wl = document.getElementById('cfgWatchlist').value.trim();
+  fetch('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mock_budget: mb, real_budget: rb, real_usd_budget: ru, watchlist: wl }),
+  }).then(r => r.json()).then(d => {
+    msg.className = 'cfg-msg ' + (d.ok ? 'ok' : 'err');
+    msg.textContent = d.ok ? '저장됨 — 봇 재시작 시 적용됩니다' : (d.error || '저장 실패');
+    setTimeout(() => { msg.textContent = ''; }, 3000);
+  }).catch(() => { msg.className = 'cfg-msg err'; msg.textContent = '서버 오류'; });
 }
 
 // ── 전략 조건 ──────────────────────────────────────
 function loadStrategy() {
-  fetch('/api/strategy').then(r => r.json()).then(d => {
+  const mode = document.getElementById('strategyMode')?.value || 'mock';
+  fetch('/api/strategy?mode=' + mode).then(r => r.json()).then(d => {
     const b = d.buy || {}, s = d.sell || {};
     const sel = (id, v, def) => { const el = document.getElementById(id); if (el) el.value = v || def || el.options[0].value; };
     const gc1 = b['단기 골든크로스'] || {};
@@ -968,7 +1033,9 @@ function saveStrategy() {
   const nf = id => parseFloat(document.getElementById(id).value) || 0;
   const ck = id => document.getElementById(id).checked;
   const sv = id => document.getElementById(id).value;
+  const mode = document.getElementById('strategyMode')?.value || 'mock';
   const config = {
+    mode,
     buy: {
       '단기 골든크로스': { '활성화': ck('stBuyGc1'), '조건': sv('stBuyGc1Cond'), '단기': ni('stBuyGc1Short'), '장기': ni('stBuyGc1Long') },
       '장기 골든크로스': { '활성화': ck('stBuyGc2'), '조건': sv('stBuyGc2Cond'), '단기': ni('stBuyGc2Short'), '장기': ni('stBuyGc2Long') },
@@ -991,7 +1058,7 @@ function saveStrategy() {
     body: JSON.stringify(config),
   }).then(r => r.json()).then(d => {
     msg.className = 'cfg-msg ' + (d.ok ? 'ok' : 'err');
-    msg.textContent = d.ok ? '전략 저장됨 — 봇 재시작 시 적용됩니다' : (d.error || '저장 실패');
+    msg.textContent = d.ok ? `[${mode.toUpperCase()}] 전략 저장됨 — 봇 재시작 시 적용됩니다` : (d.error || '저장 실패');
     setTimeout(() => { msg.textContent = ''; }, 3000);
   }).catch(() => { msg.className = 'cfg-msg err'; msg.textContent = '서버 오류'; });
 }

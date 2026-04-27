@@ -181,8 +181,8 @@ def api_bot_deploy():
         return jsonify({"ok": False, "lines": lines, "error": str(e)}), 500
 
 
-def _write_strategy(config: dict) -> None:
-    strategy_path = _BASE / "STRATEGY.md"
+def _write_strategy(config: dict, mode: str = "mock") -> None:
+    strategy_path = _BASE / f"STRATEGY_{mode.upper()}.md"
 
     def fmt_val(v):
         if isinstance(v, bool):
@@ -211,9 +211,13 @@ def _write_strategy(config: dict) -> None:
 
 @app.route("/api/strategy")
 def api_get_strategy():
+    mode = _valid_mode(request.args.get("mode", "mock"))
+    path = _BASE / f"STRATEGY_{mode.upper()}.md"
+    if not path.exists():
+        path = _BASE / "STRATEGY.md"
     try:
         from strategy.strategy_loader import load_strategy_config
-        return jsonify(load_strategy_config(str(_BASE / "STRATEGY.md")))
+        return jsonify(load_strategy_config(str(path)))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -221,8 +225,10 @@ def api_get_strategy():
 @app.route("/api/strategy", methods=["POST"])
 def api_set_strategy():
     data = request.get_json(silent=True) or {}
+    mode = _valid_mode(data.get("mode", "mock"))
+    strategy_data = {k: v for k, v in data.items() if k != "mode"}
     try:
-        _write_strategy(data)
+        _write_strategy(strategy_data, mode)
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -235,6 +241,10 @@ def api_get_config():
     return jsonify({
         "scan_interval_minutes_mock": int(env.get("SCAN_INTERVAL_MINUTES_MOCK", str(shared))),
         "scan_interval_minutes_real": int(env.get("SCAN_INTERVAL_MINUTES_REAL", str(shared))),
+        "mock_budget": int(env.get("MOCK_BUDGET", "500000")),
+        "real_budget": int(env.get("REAL_BUDGET", "500000")),
+        "real_usd_budget": float(env.get("REAL_USD_BUDGET", "750.0")),
+        "watchlist": env.get("WATCHLIST", ""),
     })
 
 
@@ -247,6 +257,15 @@ def api_set_config():
         if val < 0:
             return jsonify({"ok": False, "error": "유효하지 않은 값"}), 400
         _write_env_key(f"SCAN_INTERVAL_MINUTES_{mode.upper()}", str(val))
+    if "mock_budget" in data:
+        _write_env_key("MOCK_BUDGET", str(int(data["mock_budget"])))
+    if "real_budget" in data:
+        _write_env_key("REAL_BUDGET", str(int(data["real_budget"])))
+    if "real_usd_budget" in data:
+        _write_env_key("REAL_USD_BUDGET", str(float(data["real_usd_budget"])))
+    if "watchlist" in data:
+        cleaned = ",".join(c.strip() for c in str(data["watchlist"]).split(",") if c.strip())
+        _write_env_key("WATCHLIST", cleaned)
     return jsonify({"ok": True})
 
 
