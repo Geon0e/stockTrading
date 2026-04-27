@@ -37,7 +37,13 @@ header {
   display: flex; align-items: center; gap: 5px;
   background: #1a1a1a; border: 1px solid #2a2a2a;
   padding: 3px 10px; border-radius: 5px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  user-select: none;
 }
+.mode-grp:hover { border-color: #444; }
+.mode-grp.mode-active-mock { border-color: #a78bfa99; background: #1e1828; }
+.mode-grp.mode-active-real { border-color: #22c55e99; background: #0f1c12; }
 .mode-lbl { font-size: 11px; font-weight: bold; color: #888; }
 .mode-lbl.mock-lbl { color: #a78bfa; }
 .mode-lbl.real-lbl { color: #4ade80; }
@@ -77,6 +83,12 @@ header {
 .stat-val.b { color: #22c55e; }
 .stat-val.s { color: #ef4444; }
 #statSignals { font-size: 12px; color: #888; margin-top: 2px; }
+#activeModeBadge {
+  font-size: 11px; font-weight: bold; padding: 3px 10px;
+  border-radius: 4px; letter-spacing: 0.5px;
+}
+#activeModeBadge.mock { background: #2a1e40; color: #a78bfa; border: 1px solid #a78bfa44; }
+#activeModeBadge.real { background: #0f2a14; color: #4ade80; border: 1px solid #22c55e44; }
 
 /* ── Layout ── */
 .body {
@@ -201,6 +213,13 @@ header {
 .cfg-msg { font-size: 11px; height: 16px; }
 .cfg-msg.ok  { color: #22c55e; }
 .cfg-msg.err { color: #ef4444; }
+/* 설정 모드 표시 배지 */
+.cfg-mode-badge {
+  font-size: 11px; font-weight: bold; padding: 2px 8px;
+  border-radius: 3px; letter-spacing: 0.5px;
+}
+.cfg-mode-badge.mock { background: #2a1e40; color: #a78bfa; }
+.cfg-mode-badge.real { background: #0f2a14; color: #4ade80; }
 
 /* ── Toggle switch ── */
 .cfg-toggle {
@@ -349,19 +368,20 @@ code { color: #60a5fa; font-size: 11px; }
 
 <header>
   <span class="logo">📈 StockTrading</span>
-  <span class="mode-grp" id="modeGrpMock">
+  <!-- 클릭 → 해당 모드로 전체 전환. 버튼은 stopPropagation으로 독립 동작 -->
+  <span class="mode-grp mode-active-mock" id="modeGrpMock" onclick="setActiveMode('mock')">
     <span class="dot off" id="dotMock"></span>
     <span class="mode-lbl mock-lbl">MOCK</span>
     <span class="pid" id="pidMock"></span>
-    <button class="btn-bot btn-start" id="btnStartMock" onclick="botStart('mock')">▶</button>
-    <button class="btn-bot btn-stop"  id="btnStopMock"  onclick="botStop('mock')">■</button>
+    <button class="btn-bot btn-start" id="btnStartMock" onclick="event.stopPropagation();botStart('mock')">▶</button>
+    <button class="btn-bot btn-stop"  id="btnStopMock"  onclick="event.stopPropagation();botStop('mock')">■</button>
   </span>
-  <span class="mode-grp" id="modeGrpReal">
+  <span class="mode-grp" id="modeGrpReal" onclick="setActiveMode('real')">
     <span class="dot off" id="dotReal"></span>
     <span class="mode-lbl real-lbl">REAL</span>
     <span class="pid" id="pidReal"></span>
-    <button class="btn-bot btn-start" id="btnStartReal" onclick="botStart('real')">▶</button>
-    <button class="btn-bot btn-stop"  id="btnStopReal"  onclick="botStop('real')">■</button>
+    <button class="btn-bot btn-start" id="btnStartReal" onclick="event.stopPropagation();botStart('real')">▶</button>
+    <button class="btn-bot btn-stop"  id="btnStopReal"  onclick="event.stopPropagation();botStop('real')">■</button>
   </span>
   <span class="ts" id="lastTs" style="margin-left:auto"></span>
   <button class="btn-bot btn-deploy" onclick="botDeploy()">⬆ 배포</button>
@@ -385,12 +405,7 @@ code { color: #60a5fa; font-size: 11px; }
     <span id="statSignals">—</span>
   </div>
   <div>
-    <select id="modeSelect" onchange="onModeChange(this.value)"
-      style="background:#1a1a1a;color:#aaa;border:1px solid #333;
-             padding:4px 8px;border-radius:4px;font-family:inherit;font-size:12px;cursor:pointer">
-      <option value="mock">Mock</option>
-      <option value="real">Real</option>
-    </select>
+    <span id="activeModeBadge" class="mock">MOCK</span>
   </div>
 </div>
 
@@ -407,10 +422,10 @@ code { color: #60a5fa; font-size: 11px; }
   <div class="pane pane-left">
     <div class="pane-hd" style="padding: 0 14px 0 0;">
       <div class="log-tabs">
-        <button class="log-tab active mock-active" id="tabMock" onclick="switchLogTab('mock')">
+        <button class="log-tab active mock-active" id="tabMock" onclick="setActiveMode('mock')">
           <span class="tab-dot"></span>MOCK
         </button>
-        <button class="log-tab" id="tabReal" onclick="switchLogTab('real')">
+        <button class="log-tab" id="tabReal" onclick="setActiveMode('real')">
           <span class="tab-dot"></span>REAL
         </button>
       </div>
@@ -461,11 +476,7 @@ code { color: #60a5fa; font-size: 11px; }
       <div class="cfg-section">
         <div class="cfg-title" style="display:flex;align-items:center;gap:8px">
           <span>설정</span>
-          <select id="settingsMode" class="cfg-select" onchange="loadSettings()" style="font-size:11px;padding:2px 6px">
-            <option value="mock">MOCK</option>
-            <option value="real">REAL</option>
-          </select>
-          <span style="font-size:10px;color:#444">모드별 독립 저장</span>
+          <span id="settingsModeBadge" class="cfg-mode-badge mock">MOCK</span>
         </div>
 
         <div style="margin-top:10px">
@@ -533,11 +544,7 @@ code { color: #60a5fa; font-size: 11px; }
       <div class="cfg-section">
         <div class="cfg-title" style="display:flex;align-items:center;gap:8px">
           <span>전략 조건</span>
-          <select id="strategyMode" class="cfg-select" onchange="loadStrategy()" style="font-size:11px;padding:2px 6px">
-            <option value="mock">MOCK</option>
-            <option value="real">REAL</option>
-          </select>
-          <span style="font-size:10px;color:#444">모드별 독립 저장</span>
+          <span id="strategyModeBadge" class="cfg-mode-badge mock">MOCK</span>
         </div>
 
         <div style="font-size:11px;color:#4ade80;font-weight:bold;margin:2px 0 6px">▲ 매수 — 활성화된 조건을 모두 충족할 때</div>
@@ -657,23 +664,55 @@ code { color: #60a5fa; font-size: 11px; }
 
 <script>
 let autoScroll  = true;
-let activeLogTab = 'mock';
-let currentMode  = 'mock';   // 거래내역 탭 모드
-let spinning     = { mock: false, real: false };
-let botStatus    = { mock: { running: false, pid: null }, real: { running: false, pid: null } };
+let activeMode  = 'mock';   // 단일 모드 소스 — 모든 패널이 이 값을 따름
+let spinning    = { mock: false, real: false };
+let botStatus   = { mock: { running: false, pid: null }, real: { running: false, pid: null } };
+
+// ── 핵심: 모드 전환 ────────────────────────────────────
+// 헤더 MOCK/REAL 박스, 로그 탭 어디서 클릭해도 이 함수 하나로 모든 패널이 동기화됨
+function setActiveMode(mode) {
+  activeMode = mode;
+
+  // 헤더 모드 그룹 하이라이트
+  document.getElementById('modeGrpMock').className = 'mode-grp' + (mode === 'mock' ? ' mode-active-mock' : '');
+  document.getElementById('modeGrpReal').className = 'mode-grp' + (mode === 'real' ? ' mode-active-real' : '');
+
+  // 로그 탭
+  document.getElementById('logMock').style.display = mode === 'mock' ? '' : 'none';
+  document.getElementById('logReal').style.display = mode === 'real' ? '' : 'none';
+  document.getElementById('tabMock').className = 'log-tab' + (mode === 'mock' ? ' active mock-active' : '');
+  document.getElementById('tabReal').className = 'log-tab' + (mode === 'real' ? ' active real-active' : '');
+  if (autoScroll) {
+    const w = document.getElementById(mode === 'mock' ? 'logMock' : 'logReal');
+    w.scrollTop = w.scrollHeight;
+  }
+
+  // 통계 배지
+  const badge = document.getElementById('activeModeBadge');
+  badge.textContent = mode.toUpperCase();
+  badge.className = mode;
+
+  // 설정 패널 배지
+  const sm = mode.toUpperCase();
+  const smBadge = document.getElementById('settingsModeBadge');
+  smBadge.textContent = sm; smBadge.className = 'cfg-mode-badge ' + mode;
+  const stBadge = document.getElementById('strategyModeBadge');
+  stBadge.textContent = sm; stBadge.className = 'cfg-mode-badge ' + mode;
+
+  // 데이터 새로고침
+  loadTrades();
+  loadSummary();
+  loadPortfolio();
+  if (activeRightTab === 'settings') {
+    loadSettings();
+    loadStrategy();
+  }
+}
 
 // ── 자동스크롤 ─────────────────────────────────────
 function toggleAS() {
   autoScroll = !autoScroll;
   document.getElementById('asBtn').textContent = '자동스크롤 ' + (autoScroll ? 'ON' : 'OFF');
-}
-
-// ── 거래내역 모드 전환 ──────────────────────────────
-function onModeChange(v) {
-  currentMode = v;
-  loadTrades();
-  loadSummary();
-  loadPortfolio();
 }
 
 // ── 버튼 상태 (mock/real 각각 독립) ──────────────────
@@ -724,7 +763,7 @@ function botStop(mode) {
 }
 
 function botDeploy() {
-  const mode = activeLogTab;
+  const mode = activeMode;
   spinning[mode] = true; setButtons();
   appendLog(mode, '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   appendLog(mode, `[deploy] ${mode.toUpperCase()} — git pull → 재시작...`);
@@ -765,7 +804,7 @@ function loadStatus() {
 
 // ── 통계 ──────────────────────────────────────────
 function loadSummary() {
-  fetch('/api/trades/summary?mode=' + currentMode).then(r => r.json()).then(d => {
+  fetch('/api/trades/summary?mode=' + activeMode).then(r => r.json()).then(d => {
     document.getElementById('stTotal').textContent = d.total;
     document.getElementById('stBuys').textContent  = d.buys;
     document.getElementById('stSells').textContent = d.sells;
@@ -800,7 +839,7 @@ function sigClass(s) {
   return 'sg-def';
 }
 function loadTrades() {
-  fetch('/api/trades?mode=' + currentMode).then(r => r.json()).then(records => {
+  fetch('/api/trades?mode=' + activeMode).then(r => r.json()).then(records => {
     const tb = document.getElementById('tBody');
     tb.innerHTML = '';
     records.forEach(r => {
@@ -824,26 +863,7 @@ function loadTrades() {
   }).catch(() => {});
 }
 
-// ── 로그 탭 ───────────────────────────────────────
-function switchLogTab(mode) {
-  activeLogTab = mode;
-  document.getElementById('logMock').style.display = mode==='mock' ? '' : 'none';
-  document.getElementById('logReal').style.display = mode==='real' ? '' : 'none';
-  document.getElementById('tabMock').className = 'log-tab' + (mode==='mock' ? ' active mock-active' : '');
-  document.getElementById('tabReal').className = 'log-tab' + (mode==='real' ? ' active real-active' : '');
-  setButtons();
-  if (autoScroll) {
-    const w = document.getElementById(mode==='mock' ? 'logMock' : 'logReal');
-    w.scrollTop = w.scrollHeight;
-  }
-  // selectbox 동기화 + 데이터 새로고침
-  currentMode = mode;
-  document.getElementById('modeSelect').value = mode;
-  loadTrades();
-  loadSummary();
-  loadPortfolio();
-}
-
+// ── 로그 ──────────────────────────────────────────
 function appendLog(mode, line) {
   const wrap = document.getElementById(mode==='mock' ? 'logMock' : 'logReal');
   const d = document.createElement('div');
@@ -859,7 +879,7 @@ function appendLog(mode, line) {
     .replace(/(매도 완료|손절 매도|익절 매도|SELL)/g, '<span class="kw-s">$1</span>');
   wrap.appendChild(d);
   while (wrap.children.length > 600) wrap.removeChild(wrap.firstChild);
-  if (autoScroll && activeLogTab === mode) wrap.scrollTop = wrap.scrollHeight;
+  if (autoScroll && activeMode === mode) wrap.scrollTop = wrap.scrollHeight;
 }
 
 function makeEventSource(mode) {
@@ -892,7 +912,7 @@ function refreshRight() {
 
 // ── 포트폴리오 ──────────────────────────────────────
 function loadPortfolio() {
-  fetch('/api/portfolio?mode=' + currentMode).then(r => r.json()).then(items => {
+  fetch('/api/portfolio?mode=' + activeMode).then(r => r.json()).then(items => {
     const tb = document.getElementById('pfBody');
     tb.innerHTML = '';
     if (!items.length) {
@@ -927,8 +947,7 @@ function loadPortfolio() {
 
 // ── 설정 ──────────────────────────────────────────
 function loadSettings() {
-  const mode = document.getElementById('settingsMode').value;
-  fetch('/api/config?mode=' + mode).then(r => r.json()).then(d => {
+  fetch('/api/config?mode=' + activeMode).then(r => r.json()).then(d => {
     const mins = d.scan_interval_minutes || 0;
     let label;
     if (mins === 0) {
@@ -951,7 +970,7 @@ function loadSettings() {
     document.getElementById('cfgCurrent').textContent = label;
     document.getElementById('cfgBudget').value = d.budget ?? '';
     const usdRow = document.getElementById('cfgUsdBudgetRow');
-    if (mode === 'real') {
+    if (activeMode === 'real') {
       usdRow.style.display = '';
       document.getElementById('cfgUsdBudget').value = d.usd_budget ?? '';
     } else {
@@ -966,7 +985,6 @@ function loadSettings() {
 }
 
 function saveSettings() {
-  const mode = document.getElementById('settingsMode').value;
   const raw  = parseInt(document.getElementById('cfgIntervalVal').value) || 0;
   const unit = parseInt(document.getElementById('cfgUnit').value);
   const mins = raw * unit;
@@ -976,11 +994,11 @@ function saveSettings() {
   const wl = document.getElementById('cfgWatchlist').value.trim();
   const el = document.getElementById('cfgExcludeList').value.trim();
   const msg = document.getElementById('settingsMsg');
-  const payload = { mode, scan_interval_minutes: mins, watchlist: wl, exclude_list: el };
+  const payload = { mode: activeMode, scan_interval_minutes: mins, watchlist: wl, exclude_list: el };
   if (budget > 0) payload.budget = budget;
   if (mp > 0) payload.max_positions = mp;
   if (oq > 0) payload.order_quantity = oq;
-  if (mode === 'real') {
+  if (activeMode === 'real') {
     const usd = parseFloat(document.getElementById('cfgUsdBudget').value) || 0;
     if (usd > 0) payload.usd_budget = usd;
   }
@@ -990,15 +1008,14 @@ function saveSettings() {
     body: JSON.stringify(payload),
   }).then(r => r.json()).then(d => {
     msg.className = 'cfg-msg ' + (d.ok ? 'ok' : 'err');
-    msg.textContent = d.ok ? `[${mode.toUpperCase()}] 저장됨 — 봇 재시작 시 적용됩니다` : (d.error || '저장 실패');
+    msg.textContent = d.ok ? `[${activeMode.toUpperCase()}] 저장됨 — 봇 재시작 시 적용됩니다` : (d.error || '저장 실패');
     if (d.ok) loadSettings();
     setTimeout(() => { msg.textContent = ''; }, 3000);
   }).catch(() => { msg.className = 'cfg-msg err'; msg.textContent = '서버 오류'; });
 }
 
 function loadSettingsHistory() {
-  const mode = document.getElementById('settingsMode').value;
-  fetch('/api/settings/history?mode=' + mode).then(r => r.json()).then(records => {
+  fetch('/api/settings/history?mode=' + activeMode).then(r => r.json()).then(records => {
     const container = document.getElementById('settingsHistory');
     container.innerHTML = '';
     if (!records.length) {
@@ -1019,8 +1036,7 @@ function loadSettingsHistory() {
 
 // ── 전략 조건 ──────────────────────────────────────
 function loadStrategy() {
-  const mode = document.getElementById('strategyMode')?.value || 'mock';
-  fetch('/api/strategy?mode=' + mode).then(r => r.json()).then(d => {
+  fetch('/api/strategy?mode=' + activeMode).then(r => r.json()).then(d => {
     const b = d.buy || {}, s = d.sell || {};
     const sel = (id, v, def) => { const el = document.getElementById(id); if (el) el.value = v || def || el.options[0].value; };
     const gc1 = b['단기 골든크로스'] || {};
@@ -1082,9 +1098,8 @@ function saveStrategy() {
   const nf = id => parseFloat(document.getElementById(id).value) || 0;
   const ck = id => document.getElementById(id).checked;
   const sv = id => document.getElementById(id).value;
-  const mode = document.getElementById('strategyMode')?.value || 'mock';
   const config = {
-    mode,
+    mode: activeMode,
     buy: {
       '단기 골든크로스': { '활성화': ck('stBuyGc1'), '조건': sv('stBuyGc1Cond'), '단기': ni('stBuyGc1Short'), '장기': ni('stBuyGc1Long') },
       '장기 골든크로스': { '활성화': ck('stBuyGc2'), '조건': sv('stBuyGc2Cond'), '단기': ni('stBuyGc2Short'), '장기': ni('stBuyGc2Long') },
@@ -1107,11 +1122,10 @@ function saveStrategy() {
     body: JSON.stringify(config),
   }).then(r => r.json()).then(d => {
     msg.className = 'cfg-msg ' + (d.ok ? 'ok' : 'err');
-    msg.textContent = d.ok ? `[${mode.toUpperCase()}] 전략 저장됨 — 봇 재시작 시 적용됩니다` : (d.error || '저장 실패');
+    msg.textContent = d.ok ? `[${activeMode.toUpperCase()}] 전략 저장됨 — 봇 재시작 시 적용됩니다` : (d.error || '저장 실패');
     setTimeout(() => { msg.textContent = ''; }, 3000);
   }).catch(() => { msg.className = 'cfg-msg err'; msg.textContent = '서버 오류'; });
 }
-
 
 // ── 모바일 탭 ──────────────────────────────────────
 function switchMobTab(tab) {
