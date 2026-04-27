@@ -201,6 +201,25 @@ header {
 .cfg-msg.ok  { color: #22c55e; }
 .cfg-msg.err { color: #ef4444; }
 
+/* ── Toggle switch ── */
+.cfg-toggle {
+  position: relative; display: inline-block;
+  width: 34px; height: 18px; flex-shrink: 0;
+}
+.cfg-toggle input { opacity: 0; width: 0; height: 0; }
+.cfg-toggle span {
+  position: absolute; cursor: pointer; inset: 0;
+  background: #333; border-radius: 18px; transition: .2s;
+}
+.cfg-toggle span::before {
+  content: ''; position: absolute;
+  height: 12px; width: 12px; left: 3px; bottom: 3px;
+  background: #888; border-radius: 50%; transition: .2s;
+}
+.cfg-toggle input:checked + span { background: #15803d; }
+.cfg-toggle input:checked + span::before { transform: translateX(16px); background: #fff; }
+.st-name { font-size: 12px; color: #d4d4d4; min-width: 110px; }
+
 /* ── Trade table ── */
 .tbl-wrap { flex: 1; overflow-y: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
@@ -462,6 +481,94 @@ code { color: #60a5fa; font-size: 11px; }
 
         <div class="cfg-msg" id="cfgMsg"></div>
       </div>
+
+      <!-- 전략 조건 -->
+      <div class="cfg-section">
+        <div class="cfg-title">전략 조건</div>
+
+        <div style="font-size:11px;color:#4ade80;font-weight:bold;margin:2px 0 6px">▲ 매수 — 활성화된 조건을 모두 충족할 때</div>
+
+        <div class="cfg-row">
+          <label class="cfg-toggle"><input type="checkbox" id="stBuyGc1"><span></span></label>
+          <span class="st-name">단기 골든크로스</span>
+          <span class="cfg-hint">단기</span>
+          <input type="number" id="stBuyGc1Short" class="cfg-input" style="width:56px">
+          <span class="cfg-hint">장기</span>
+          <input type="number" id="stBuyGc1Long" class="cfg-input" style="width:56px">
+        </div>
+
+        <div class="cfg-row">
+          <label class="cfg-toggle"><input type="checkbox" id="stBuyGc2"><span></span></label>
+          <span class="st-name">장기 골든크로스</span>
+          <span class="cfg-hint">단기</span>
+          <input type="number" id="stBuyGc2Short" class="cfg-input" style="width:56px">
+          <span class="cfg-hint">장기</span>
+          <input type="number" id="stBuyGc2Long" class="cfg-input" style="width:56px">
+        </div>
+
+        <div class="cfg-row">
+          <label class="cfg-toggle"><input type="checkbox" id="stBuyRsi"><span></span></label>
+          <span class="st-name">RSI</span>
+          <span class="cfg-hint">기간</span>
+          <input type="number" id="stBuyRsiPer" class="cfg-input" style="width:56px">
+          <span class="cfg-hint">기준이하</span>
+          <input type="number" id="stBuyRsiThr" class="cfg-input" style="width:56px">
+        </div>
+
+        <div class="cfg-row">
+          <label class="cfg-toggle"><input type="checkbox" id="stBuyMacd"><span></span></label>
+          <span class="st-name">MACD</span>
+          <span class="cfg-hint">단기</span>
+          <input type="number" id="stBuyMacdS" class="cfg-input" style="width:50px">
+          <span class="cfg-hint">장기</span>
+          <input type="number" id="stBuyMacdL" class="cfg-input" style="width:50px">
+          <span class="cfg-hint">시그널</span>
+          <input type="number" id="stBuyMacdSig" class="cfg-input" style="width:50px">
+        </div>
+
+        <div class="cfg-row">
+          <label class="cfg-toggle"><input type="checkbox" id="stBuyBb"><span></span></label>
+          <span class="st-name">볼린저밴드</span>
+          <span class="cfg-hint">기간</span>
+          <input type="number" id="stBuyBbPer" class="cfg-input" style="width:56px">
+          <span class="cfg-hint">표준편차</span>
+          <input type="number" id="stBuyBbStd" class="cfg-input" style="width:56px" step="0.1">
+        </div>
+
+        <div style="font-size:11px;color:#ef4444;font-weight:bold;margin:8px 0 6px">▼ 매도 — 하나라도 충족하면</div>
+
+        <div class="cfg-row">
+          <label class="cfg-toggle"><input type="checkbox" id="stSellDc1"><span></span></label>
+          <span class="st-name">단기 데드크로스</span>
+        </div>
+
+        <div class="cfg-row">
+          <label class="cfg-toggle"><input type="checkbox" id="stSellDc2"><span></span></label>
+          <span class="st-name">장기 데드크로스</span>
+        </div>
+
+        <div class="cfg-row">
+          <label class="cfg-toggle"><input type="checkbox" id="stSellRsi"><span></span></label>
+          <span class="st-name">RSI 과매수</span>
+          <span class="cfg-hint">기준이상</span>
+          <input type="number" id="stSellRsiThr" class="cfg-input" style="width:56px">
+        </div>
+
+        <div class="cfg-row">
+          <label class="cfg-toggle"><input type="checkbox" id="stSellMacd"><span></span></label>
+          <span class="st-name">MACD 데드크로스</span>
+        </div>
+
+        <div class="cfg-row">
+          <label class="cfg-toggle"><input type="checkbox" id="stSellBb"><span></span></label>
+          <span class="st-name">볼린저밴드 상단</span>
+        </div>
+
+        <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+          <button class="cfg-save" onclick="saveStrategy()">전략 저장</button>
+          <div class="cfg-msg" id="stMsg"></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -691,7 +798,7 @@ function switchRightTab(tab) {
   document.getElementById('rtabPortfolio').classList.toggle('active', tab === 'portfolio');
   document.getElementById('rtabTrades').classList.toggle('active',    tab === 'trades');
   document.getElementById('rtabSettings').classList.toggle('active',  tab === 'settings');
-  if (tab === 'settings')  loadConfig();
+  if (tab === 'settings')  { loadConfig(); loadStrategy(); }
   if (tab === 'portfolio') loadPortfolio();
   if (tab === 'trades')    loadTrades();
 }
@@ -765,6 +872,77 @@ function loadConfig() {
   }).catch(() => {});
 }
 
+// ── 전략 조건 ──────────────────────────────────────
+function loadStrategy() {
+  fetch('/api/strategy').then(r => r.json()).then(d => {
+    const b = d.buy || {}, s = d.sell || {};
+    const gc1 = b['단기 골든크로스'] || {};
+    document.getElementById('stBuyGc1').checked = !!gc1['활성화'];
+    document.getElementById('stBuyGc1Short').value = gc1['단기'] ?? '';
+    document.getElementById('stBuyGc1Long').value  = gc1['장기'] ?? '';
+    const gc2 = b['장기 골든크로스'] || {};
+    document.getElementById('stBuyGc2').checked = !!gc2['활성화'];
+    document.getElementById('stBuyGc2Short').value = gc2['단기'] ?? '';
+    document.getElementById('stBuyGc2Long').value  = gc2['장기'] ?? '';
+    const rsi = b['RSI'] || {};
+    document.getElementById('stBuyRsi').checked = !!rsi['활성화'];
+    document.getElementById('stBuyRsiPer').value = rsi['기간'] ?? '';
+    document.getElementById('stBuyRsiThr').value = rsi['매수 기준 이하'] ?? '';
+    const macd = b['MACD'] || {};
+    document.getElementById('stBuyMacd').checked = !!macd['활성화'];
+    document.getElementById('stBuyMacdS').value   = macd['단기'] ?? '';
+    document.getElementById('stBuyMacdL').value   = macd['장기'] ?? '';
+    document.getElementById('stBuyMacdSig').value = macd['시그널'] ?? '';
+    const bb = b['볼린저밴드'] || {};
+    document.getElementById('stBuyBb').checked = !!bb['활성화'];
+    document.getElementById('stBuyBbPer').value = bb['기간'] ?? '';
+    document.getElementById('stBuyBbStd').value = bb['표준편차'] ?? '';
+    const dc1 = s['단기 데드크로스'] || {};
+    document.getElementById('stSellDc1').checked = !!dc1['활성화'];
+    const dc2 = s['장기 데드크로스'] || {};
+    document.getElementById('stSellDc2').checked = !!dc2['활성화'];
+    const srsi = s['RSI 과매수'] || {};
+    document.getElementById('stSellRsi').checked = !!srsi['활성화'];
+    document.getElementById('stSellRsiThr').value = srsi['매도 기준 이상'] ?? '';
+    const smacd = s['MACD 데드크로스'] || {};
+    document.getElementById('stSellMacd').checked = !!smacd['활성화'];
+    const sbb = s['볼린저밴드 상단'] || {};
+    document.getElementById('stSellBb').checked = !!sbb['활성화'];
+  }).catch(() => {});
+}
+
+function saveStrategy() {
+  const ni = id => parseInt(document.getElementById(id).value) || 0;
+  const nf = id => parseFloat(document.getElementById(id).value) || 0;
+  const ck = id => document.getElementById(id).checked;
+  const config = {
+    buy: {
+      '단기 골든크로스': { '활성화': ck('stBuyGc1'), '단기': ni('stBuyGc1Short'), '장기': ni('stBuyGc1Long') },
+      '장기 골든크로스': { '활성화': ck('stBuyGc2'), '단기': ni('stBuyGc2Short'), '장기': ni('stBuyGc2Long') },
+      'RSI':            { '활성화': ck('stBuyRsi'), '기간': ni('stBuyRsiPer'), '매수 기준 이하': ni('stBuyRsiThr') },
+      'MACD':           { '활성화': ck('stBuyMacd'), '단기': ni('stBuyMacdS'), '장기': ni('stBuyMacdL'), '시그널': ni('stBuyMacdSig') },
+      '볼린저밴드':     { '활성화': ck('stBuyBb'), '기간': ni('stBuyBbPer'), '표준편차': nf('stBuyBbStd') },
+    },
+    sell: {
+      '단기 데드크로스':  { '활성화': ck('stSellDc1') },
+      '장기 데드크로스':  { '활성화': ck('stSellDc2') },
+      'RSI 과매수':       { '활성화': ck('stSellRsi'), '매도 기준 이상': ni('stSellRsiThr') },
+      'MACD 데드크로스':  { '활성화': ck('stSellMacd') },
+      '볼린저밴드 상단':  { '활성화': ck('stSellBb') },
+    },
+  };
+  const msg = document.getElementById('stMsg');
+  fetch('/api/strategy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  }).then(r => r.json()).then(d => {
+    msg.className = 'cfg-msg ' + (d.ok ? 'ok' : 'err');
+    msg.textContent = d.ok ? '전략 저장됨 — 봇 재시작 시 적용됩니다' : (d.error || '저장 실패');
+    setTimeout(() => { msg.textContent = ''; }, 3000);
+  }).catch(() => { msg.className = 'cfg-msg err'; msg.textContent = '서버 오류'; });
+}
+
 function saveConfig(mode) {
   const suffix = mode[0].toUpperCase() + mode.slice(1);
   const raw  = parseInt(document.getElementById('cfgIntervalVal' + suffix).value) || 0;
@@ -811,7 +989,7 @@ function switchMobTab(tab) {
     document.getElementById('tradesRefreshBtn').style.display = (tab === 'portfolio' || tab === 'trades') ? '' : 'none';
     if (tab === 'portfolio') loadPortfolio();
     if (tab === 'trades')    loadTrades();
-    if (tab === 'settings')  loadConfig();
+    if (tab === 'settings')  { loadConfig(); loadStrategy(); }
   }
 }
 

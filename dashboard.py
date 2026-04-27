@@ -181,6 +181,53 @@ def api_bot_deploy():
         return jsonify({"ok": False, "lines": lines, "error": str(e)}), 500
 
 
+def _write_strategy(config: dict) -> None:
+    strategy_path = _BASE / "STRATEGY.md"
+
+    def fmt_val(v):
+        if isinstance(v, bool):
+            return "true" if v else "false"
+        return str(v)
+
+    lines = [
+        "# 매매 전략 설정", "",
+        "## 매수 조건",
+        "> 활성화된 조건을 **모두** 충족할 때 매수", "",
+    ]
+    for name, params in (config.get("buy") or {}).items():
+        lines.append(f"### {name}")
+        for k, v in params.items():
+            lines.append(f"- {k}: {fmt_val(v)}")
+        lines.append("")
+    lines += ["---", "", "## 매도 조건",
+              "> 활성화된 조건 중 **하나라도** 충족하면 매도", ""]
+    for name, params in (config.get("sell") or {}).items():
+        lines.append(f"### {name}")
+        for k, v in params.items():
+            lines.append(f"- {k}: {fmt_val(v)}")
+        lines.append("")
+    strategy_path.write_text("\n".join(lines), encoding="utf-8")
+
+
+@app.route("/api/strategy")
+def api_get_strategy():
+    try:
+        from strategy.strategy_loader import load_strategy_config
+        return jsonify(load_strategy_config(str(_BASE / "STRATEGY.md")))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/strategy", methods=["POST"])
+def api_set_strategy():
+    data = request.get_json(silent=True) or {}
+    try:
+        _write_strategy(data)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/config")
 def api_get_config():
     env = _read_env()
