@@ -43,26 +43,65 @@ def _bot_status(mode: str) -> dict:
     return {"running": running, "pid": pid}
 
 
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except (ProcessLookupError, PermissionError):
+        return False
+
+
 def _kill_bot(mode: str) -> tuple:
     pid_file = _BASE / f".bot.{mode}.pid"
-    if not pid_file.exists():
-        return True, "이미 정지됨"
-    try:
-        pid = int(pid_file.read_text().strip())
-        os.kill(pid, signal.SIGTERM)
-        time.sleep(0.8)
+
+    # Collect PIDs to kill: pid file entry + any orphaned main.py processes
+    pids_to_kill = set()
+    if pid_file.exists():
         try:
-            os.kill(pid, 0)
+            pids_to_kill.add(int(pid_file.read_text().strip()))
+        except ValueError:
+            pass
+
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "python.*main\\.py"],
+            capture_output=True, text=True
+        )
+        for line in result.stdout.splitlines():
+            try:
+                pids_to_kill.add(int(line.strip()))
+            except ValueError:
+                pass
+    except Exception:
+        pass
+
+    if not pids_to_kill:
+        pid_file.unlink(missing_ok=True)
+        return True, "이미 정지됨"
+
+    for pid in pids_to_kill:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except (ProcessLookupError, Exception):
+            pass
+
+    # Poll until confirmed dead (up to 5s), then SIGKILL survivors
+    alive = pids_to_kill.copy()
+    deadline = time.time() + 5
+    while time.time() < deadline and alive:
+        time.sleep(0.2)
+        alive = {p for p in alive if _pid_alive(p)}
+
+    for pid in alive:
+        try:
             os.kill(pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        pid_file.unlink(missing_ok=True)
-        return True, "정지 완료"
-    except (ProcessLookupError, ValueError):
-        pid_file.unlink(missing_ok=True)
-        return True, "이미 정지됨"
-    except Exception as e:
-        return False, str(e)
+    if alive:
+        time.sleep(0.5)
+
+    pid_file.unlink(missing_ok=True)
+    return True, "정지 완료"
 
 
 def _start_bot(mode: str) -> dict:
@@ -122,6 +161,16 @@ def _append_settings_history(mode: str, changes: dict) -> None:
     }
     with history_path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def _format_interval(mins: int) -> str:
+    if mins == 0:
+        return "고정 시간 (09:05 / 23:35)"
+    if mins % 1440 == 0:
+        return f"{mins // 1440}일마다"
+    if mins % 60 == 0:
+        return f"{mins // 60}시간마다"
+    return f"{mins}분마다"
 
 
 @app.route("/")
@@ -318,6 +367,80 @@ def api_set_config():
         _append_settings_history(mode, changes)
 
     return jsonify({"ok": True})
+
+
+@app.route("/api/save-restart", methods=["POST"])
+def api_save_restart():
+    """설정 + 전략을 한 번에 저장하고 봇을 재시작한다."""
+    data = request.get_json(silent=True) or {}
+    mode = _valid_mode(data.get("mode", "mock"))
+    cfg = data.get("config", {})
+    strategy_data = data.get("strategy", {})
+    changes = {}
+
+    # ── 설정 저장 ──────────────────────────────────────────────────────────
+    if "scan_interval_minutes" in cfg:
+        val = int(cfg["scan_interval_minutes"])
+        _write_env_key(f"SCAN_INTERVAL_MINUTES_{mode.upper()}", str(val))
+        changes["스캔 주기"] = _format_interval(val)
+
+    if "budget" in cfg:
+        val = int(cfg["budget"])
+        _write_env_key("MOCK_BUDGET" if mode == "mock" else "REAL_BUDGET", str(val))
+        changes["예산"] = f"{val:,}원"
+
+    if "usd_budget" in cfg and mode == "real":
+        val = float(cfg["usd_budget"])
+        _write_env_key("REAL_USD_BUDGET", str(val))
+        changes["미국 예산"] = f"${val:,.2f}"
+
+    if "max_positions" in cfg:
+        val = int(cfg["max_positions"])
+        if val >= 1:
+            _write_env_key(f"MAX_POSITIONS_{mode.upper()}", str(val))
+            changes["최대 보유"] = f"{val}개"
+
+    if "order_quantity" in cfg:
+        val = int(cfg["order_quantity"])
+        if val >= 1:
+            _write_env_key(f"ORDER_QUANTITY_{mode.upper()}", str(val))
+            changes["주문 수량"] = f"{val}주"
+
+    if "watchlist" in cfg:
+        cleaned = ",".join(c.strip() for c in str(cfg["watchlist"]).split(",") if c.strip())
+        _write_env_key(f"WATCHLIST_{mode.upper()}", cleaned)
+        changes["스캔 종목"] = cleaned if cleaned else "자동 스캔"
+
+    if "exclude_list" in cfg:
+        cleaned = ",".join(c.strip() for c in str(cfg["exclude_list"]).split(",") if c.strip())
+        _write_env_key(f"EXCLUDE_LIST_{mode.upper()}", cleaned)
+        changes["제외 종목"] = cleaned if cleaned else "없음"
+
+    # ── 전략 저장 ──────────────────────────────────────────────────────────
+    if strategy_data:
+        try:
+            _write_strategy(strategy_data, mode)
+            buy_active = [
+                name for name, params in (strategy_data.get("buy") or {}).items()
+                if params.get("활성화")
+            ]
+            sell_active = [
+                name for name, params in (strategy_data.get("sell") or {}).items()
+                if params.get("활성화")
+            ]
+            changes["매수 조건"] = ", ".join(buy_active) if buy_active else "없음"
+            changes["매도 조건"] = ", ".join(sell_active) if sell_active else "없음"
+        except Exception as e:
+            return jsonify({"ok": False, "error": f"전략 저장 실패: {e}"}), 500
+
+    # ── 히스토리 기록 ──────────────────────────────────────────────────────
+    if changes:
+        _append_settings_history(mode, changes)
+
+    # ── 봇 재시작 ──────────────────────────────────────────────────────────
+    _kill_bot(mode)
+    st = _start_bot(mode)
+    return jsonify({"ok": st["running"], "pid": st["pid"], "mode": mode})
 
 
 @app.route("/api/settings/history")

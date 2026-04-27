@@ -3,7 +3,7 @@ import os
 from dataclasses import dataclass
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 _MOCK = {
     "base_url": "https://openapivts.koreainvestment.com:29443",
