@@ -243,11 +243,41 @@ code { color: #60a5fa; font-size: 11px; }
 @media (max-width: 768px) {
   body { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
 
-  header { flex-wrap: wrap; gap: 8px; padding: 8px 12px; }
-  .logo { font-size: 14px; }
-  .bot-controls { margin-left: 0; width: 100%; justify-content: flex-end; }
-  .btn-bot { padding: 6px 12px; font-size: 11px; }
-  #lastTs { display: none; }
+  header {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      "logo logo"
+      "mock real";
+    padding: 8px 12px 0;
+    gap: 0;
+  }
+  .logo    { grid-area: logo; font-size: 14px; align-self: center; padding-bottom: 6px; }
+  #lastTs  { display: none; }
+  #modeGrpMock {
+    grid-area: mock;
+    border-radius: 0; border: none;
+    border-top: 1px solid #1e1e1e;
+    border-right: 1px solid #1e1e1e;
+    background: #111;
+    padding: 7px 0;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+  }
+  #modeGrpReal {
+    grid-area: real;
+    border-radius: 0; border: none;
+    border-top: 1px solid #1e1e1e;
+    background: #111;
+    padding: 7px 0;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+  }
+  .mode-grp .btn-bot { padding: 4px 14px; font-size: 12px; }
+  .pid { display: none; }
 
   .stats { gap: 14px; padding: 6px 12px; flex-wrap: wrap; }
   .stat-val { font-size: 16px; }
@@ -295,24 +325,21 @@ code { color: #60a5fa; font-size: 11px; }
 
 <header>
   <span class="logo">📈 StockTrading</span>
-  <span class="mode-grp">
+  <span class="mode-grp" id="modeGrpMock">
     <span class="dot off" id="dotMock"></span>
     <span class="mode-lbl mock-lbl">MOCK</span>
     <span class="pid" id="pidMock"></span>
     <button class="btn-bot btn-start" id="btnStartMock" onclick="botStart('mock')">▶</button>
     <button class="btn-bot btn-stop"  id="btnStopMock"  onclick="botStop('mock')">■</button>
   </span>
-  <span class="mode-grp">
+  <span class="mode-grp" id="modeGrpReal">
     <span class="dot off" id="dotReal"></span>
     <span class="mode-lbl real-lbl">REAL</span>
     <span class="pid" id="pidReal"></span>
     <button class="btn-bot btn-start" id="btnStartReal" onclick="botStart('real')">▶</button>
     <button class="btn-bot btn-stop"  id="btnStopReal"  onclick="botStop('real')">■</button>
   </span>
-  <div class="bot-controls">
-    <button class="btn-bot btn-deploy" id="btnDeploy" onclick="botDeploy()">🚀 배포</button>
-  </div>
-  <span class="ts" id="lastTs" style="margin-left:8px"></span>
+  <span class="ts" id="lastTs" style="margin-left:auto"></span>
 </header>
 
 <div class="stats">
@@ -459,11 +486,6 @@ function setButtons() {
     bs.classList.toggle('btn-spin', sp && !run);
     bx.classList.toggle('btn-spin', sp && run);
   });
-  const anySpin = spinning.mock || spinning.real;
-  const bd = document.getElementById('btnDeploy');
-  bd.disabled = anySpin;
-  bd.classList.toggle('btn-spin', anySpin);
-  bd.textContent = anySpin ? '🚀 배포 중' : '🚀 배포';
 }
 
 // ── 봇 제어 ────────────────────────────────────────
