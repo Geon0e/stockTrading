@@ -135,19 +135,24 @@ def run_real_domestic_cycle(ctx: dict, token: str) -> int:
         if _tg(ctx):
             tg_notify_signal(_tg(ctx), code, price, signal_type)
 
-        # 2단계: 매수 주문
-        result = ctx["order_client"].buy(code, quantity, token)
+        # 2단계: 매수 주문 (시장가 or 지정가)
+        config = ctx["config"]
+        limit_price = None
+        if config.order_type == "limit":
+            limit_price = round(price * (1 + config.limit_order_pct / 100))
+            logger.info(f"[실전] 지정가 주문: {label} | 신호가 {price:,}원 × (1+{config.limit_order_pct}%) = {limit_price:,}원")
+        result = ctx["order_client"].buy(code, quantity, token, limit_price=limit_price)
         order_no = result.get("output", {}).get("ODNO", "")
         if _tg(ctx):
-            tg_notify_order_placed(_tg(ctx), code, quantity, price, order_no)
+            tg_notify_order_placed(_tg(ctx), code, quantity, limit_price or price, order_no)
 
-        # 4단계: 체결 확인
+        # 3단계: 체결 확인
         exec_info = ctx["order_client"].get_execution(code, order_no, token)
-        exec_price = exec_info["exec_price"] if exec_info else str(price)
+        exec_price = exec_info["exec_price"] if exec_info else str(limit_price or price)
         exec_time = exec_info["exec_time"] if exec_info else ""
         if _tg(ctx):
             tg_notify_buy(
-                _tg(ctx), code, quantity, price,
+                _tg(ctx), code, quantity, limit_price or price,
                 signal_type=signal_type, signal_time=signal_time,
                 exec_price=exec_price,
             )

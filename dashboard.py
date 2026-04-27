@@ -297,6 +297,8 @@ def api_get_config():
         "scan_nasdaq": env.get(f"SCAN_NASDAQ_{m}", env.get("SCAN_NASDAQ", "false")).lower() == "true",
         "take_profit_rate": float(env.get(f"TAKE_PROFIT_RATE_{m}", env.get("TAKE_PROFIT_RATE", "0"))),
         "stop_loss_pct": float(env.get(f"STOP_LOSS_PCT_{m}", env.get("STOP_LOSS_PCT", "0"))),
+        "order_type": env.get(f"ORDER_TYPE_{m}", "market"),
+        "limit_order_pct": float(env.get(f"LIMIT_ORDER_PCT_{m}", "1.0")),
     }
     if mode == "real":
         result["usd_budget"] = float(env.get("REAL_USD_BUDGET", "750.0"))
@@ -423,6 +425,17 @@ def api_save_restart():
         val = float(cfg["stop_loss_pct"])
         _write_env_key(f"STOP_LOSS_PCT_{mode.upper()}", str(val))
         changes["손절"] = f"-{val}%" if val > 0 else "비활성화"
+
+    if "order_type" in cfg:
+        val = cfg["order_type"] if cfg["order_type"] in ("market", "limit") else "market"
+        _write_env_key(f"ORDER_TYPE_{mode.upper()}", val)
+        changes["주문 방식"] = "시장가" if val == "market" else "지정가"
+
+    if "limit_order_pct" in cfg:
+        val = float(cfg["limit_order_pct"])
+        _write_env_key(f"LIMIT_ORDER_PCT_{mode.upper()}", str(val))
+        if cfg.get("order_type") == "limit":
+            changes["지정가 허용폭"] = f"+{val}%"
 
     # ── 전략 저장 ──────────────────────────────────────────────────────────
     if strategy_data:

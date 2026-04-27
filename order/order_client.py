@@ -20,14 +20,14 @@ class OrderClient:
     def __init__(self, config: Config):
         self._config = config
 
-    def buy(self, stock_code: str, quantity: int, token: str) -> dict:
-        return self._place_order("매수", stock_code, quantity, self._config.tr_buy, token)
+    def buy(self, stock_code: str, quantity: int, token: str, limit_price: int = None) -> dict:
+        return self._place_order("매수", stock_code, quantity, self._config.tr_buy, token, limit_price=limit_price)
 
     def sell(self, stock_code: str, quantity: int, token: str) -> dict:
         return self._place_order("매도", stock_code, quantity, self._config.tr_sell, token)
 
-    def buy_overseas(self, symbol: str, exchange: str, quantity: int, token: str) -> dict:
-        price = self._fetch_overseas_price(symbol, exchange, token)
+    def buy_overseas(self, symbol: str, exchange: str, quantity: int, token: str, limit_price: float = None) -> dict:
+        price = str(limit_price) if limit_price else self._fetch_overseas_price(symbol, exchange, token)
         return self._place_overseas_order("매수", symbol, exchange, quantity, price, self._config.tr_overseas_buy, token)
 
     def sell_overseas(self, symbol: str, exchange: str, quantity: int, token: str) -> dict:
@@ -202,14 +202,20 @@ class OrderClient:
         logger.info(f"[{self._config.mode}] 해외 {side} 완료 | {exchange}:{symbol} {quantity}주 @ {price}")
         return data
 
-    def _place_order(self, side: str, stock_code: str, quantity: int, tr_id: str, token: str) -> dict:
+    def _place_order(self, side: str, stock_code: str, quantity: int, tr_id: str, token: str, limit_price: int = None) -> dict:
+        if limit_price:
+            ord_dvsn = "00"             # 지정가
+            ord_unpr = str(limit_price)
+        else:
+            ord_dvsn = "01"             # 시장가
+            ord_unpr = "0"
         body = {
             "CANO": self._config.cano,
             "ACNT_PRDT_CD": self._config.acnt_prdt_cd,
             "PDNO": stock_code,
-            "ORD_DVSN": "01",       # 시장가
+            "ORD_DVSN": ord_dvsn,
             "ORD_QTY": str(quantity),
-            "ORD_UNPR": "0",
+            "ORD_UNPR": ord_unpr,
         }
         headers = self._headers(tr_id, token)
         if self._config.mode == "real":
@@ -223,7 +229,8 @@ class OrderClient:
         if data.get("rt_cd") != "0":
             raise RuntimeError(f"{side} 주문 실패 [{stock_code}]: {data.get('msg1')}")
 
-        logger.info(f"[{self._config.mode}] {side} 완료 | {stock_code} {quantity}주")
+        order_label = f"지정가 {limit_price:,}원" if limit_price else "시장가"
+        logger.info(f"[{self._config.mode}] {side} 완료 | {stock_code} {quantity}주 ({order_label})")
         return data
 
     def _get_hash_key(self, body: dict) -> str:

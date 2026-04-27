@@ -61,6 +61,8 @@ class Config:
     scan_interval_minutes: int  # 스캔 주기(분). 0 = 고정시간(국내 09:05 / 나스닥 23:35)
     watchlist: tuple        # 커스텀 스캔 종목 리스트. 비어있으면 기본 스캔(전종목/거래량 상위)
     exclude_list: tuple     # 거래 제외 종목 코드 리스트 (모드 무관 적용)
+    order_type: str         # "market" | "limit"
+    limit_order_pct: float  # 지정가 주문 시 포착 가격 대비 허용 % (예: 1.0 → 신호가 × 1.01)
 
 
 def load_config() -> Config:
@@ -106,5 +108,7 @@ def load_config() -> Config:
         order_quantity=int(os.getenv(f"ORDER_QUANTITY_{mode.upper()}", os.getenv("ORDER_QUANTITY", "1"))),
         watchlist=tuple(c.strip() for c in os.getenv(f"WATCHLIST_{mode.upper()}", os.getenv("WATCHLIST", "")).split(",") if c.strip()),
         exclude_list=tuple(c.strip() for c in os.getenv(f"EXCLUDE_LIST_{mode.upper()}", os.getenv("EXCLUDE_LIST", "")).split(",") if c.strip()),
+        order_type=os.getenv(f"ORDER_TYPE_{mode.upper()}", "market"),
+        limit_order_pct=float(os.getenv(f"LIMIT_ORDER_PCT_{mode.upper()}", "1.0")),
         **env,
     )

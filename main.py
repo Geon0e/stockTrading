@@ -188,18 +188,22 @@ def _run_domestic_cycle(ctx: dict, token: str) -> int:
                 logger.debug(f"예산 초과 스킵: {label} | {price:,.0f}원 > 포지션예산 {per_position:,}원")
                 continue
 
-            # 3단계: 매수 주문
-            result    = ctx["order_client"].buy(code, quantity, token)
+            # 3단계: 매수 주문 (시장가 or 지정가)
+            limit_price = None
+            if config.order_type == "limit":
+                limit_price = round(price * (1 + config.limit_order_pct / 100))
+                logger.info(f"지정가 주문: {code} | 신호가 {price:,}원 × (1+{config.limit_order_pct}%) = {limit_price:,}원")
+            result    = ctx["order_client"].buy(code, quantity, token, limit_price=limit_price)
             order_no  = result.get("output", {}).get("ODNO", "")
             if _tg(ctx):
-                tg_notify_order_placed(_tg(ctx), code, quantity, price, order_no)
+                tg_notify_order_placed(_tg(ctx), code, quantity, limit_price or price, order_no)
 
             # 4단계: 체결 확인 후 알림 + 저장
             exec_info = ctx["order_client"].get_execution(code, order_no, token)
-            exec_price = exec_info["exec_price"] if exec_info else str(price)
+            exec_price = exec_info["exec_price"] if exec_info else str(limit_price or price)
             exec_time  = exec_info["exec_time"]  if exec_info else ""
             if _tg(ctx):
-                tg_notify_buy(_tg(ctx), code, quantity, price,
+                tg_notify_buy(_tg(ctx), code, quantity, limit_price or price,
                               signal_type=signal_type, signal_time=signal_time,
                               exec_price=exec_price)
             ctx["trade_logger"].log(
@@ -284,24 +288,29 @@ def _run_nasdaq_cycle(ctx: dict, token: str) -> int:
                 logger.debug(f"예산 초과 스킵: {label} | ${price:.2f} > 포지션예산 ${per_position_usd:.2f}")
                 continue
 
-            # 3단계: 매수 주문
-            result   = ctx["order_client"].buy_overseas(symbol, exchange, quantity, token)
+            # 3단계: 매수 주문 (시장가 or 지정가)
+            if config.order_type == "limit":
+                order_price = round(price * (1 + config.limit_order_pct / 100), 2)
+                logger.info(f"지정가 주문: {symbol} | 신호가 ${price:.2f} × (1+{config.limit_order_pct}%) = ${order_price:.2f}")
+            else:
+                order_price = price
+            result   = ctx["order_client"].buy_overseas(symbol, exchange, quantity, token, limit_price=order_price)
             order_no = result.get("output", {}).get("ODNO", "")
             if _tg(ctx):
-                tg_notify_order_placed(_tg(ctx), symbol, quantity, price, order_no, market="US")
+                tg_notify_order_placed(_tg(ctx), symbol, quantity, order_price, order_no, market="US")
 
             # 4단계: 체결 알림 + 저장 (해외는 체결조회 미지원, 주문가로 대체)
             if _tg(ctx):
-                tg_notify_buy(_tg(ctx), symbol, quantity, price,
+                tg_notify_buy(_tg(ctx), symbol, quantity, order_price,
                               signal_type=signal_type, signal_time=signal_time,
-                              exec_price=str(price), market="US")
+                              exec_price=str(order_price), market="US")
             ctx["trade_logger"].log(
                 "BUY", symbol, quantity, result,
                 signal_type=signal_type,
                 signal_detected_at=signal_time,
-                exec_price=str(price),
+                exec_price=str(order_price),
             )
-            holdings[symbol] = {"qty": quantity, "exchange": exchange, "avg_price": str(price)}
+            holdings[symbol] = {"qty": quantity, "exchange": exchange, "avg_price": str(order_price)}
             bought += 1
         if not candidates:
             logger.info(f"나스닥 골든크로스 종목 없음 | 보유: {len(holdings)}개")
