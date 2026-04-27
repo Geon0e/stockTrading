@@ -295,6 +295,8 @@ def api_get_config():
         "exclude_list": env.get(f"EXCLUDE_LIST_{m}", env.get("EXCLUDE_LIST", "")),
         "scan_all_stocks": env.get(f"SCAN_ALL_STOCKS_{m}", env.get("SCAN_ALL_STOCKS", "false")).lower() == "true",
         "scan_nasdaq": env.get(f"SCAN_NASDAQ_{m}", env.get("SCAN_NASDAQ", "false")).lower() == "true",
+        "take_profit_rate": float(env.get(f"TAKE_PROFIT_RATE_{m}", env.get("TAKE_PROFIT_RATE", "0"))),
+        "stop_loss_pct": float(env.get(f"STOP_LOSS_PCT_{m}", env.get("STOP_LOSS_PCT", "0"))),
     }
     if mode == "real":
         result["usd_budget"] = float(env.get("REAL_USD_BUDGET", "750.0"))
@@ -411,6 +413,16 @@ def api_save_restart():
         val = bool(cfg["scan_nasdaq"])
         _write_env_key(f"SCAN_NASDAQ_{mode.upper()}", "true" if val else "false")
         changes["나스닥 스캔"] = "활성화" if val else "비활성화"
+
+    if "take_profit_rate" in cfg:
+        val = float(cfg["take_profit_rate"])
+        _write_env_key(f"TAKE_PROFIT_RATE_{mode.upper()}", str(val))
+        changes["익절"] = f"+{val}%" if val > 0 else "비활성화"
+
+    if "stop_loss_pct" in cfg:
+        val = float(cfg["stop_loss_pct"])
+        _write_env_key(f"STOP_LOSS_PCT_{mode.upper()}", str(val))
+        changes["손절"] = f"-{val}%" if val > 0 else "비활성화"
 
     # ── 전략 저장 ──────────────────────────────────────────────────────────
     if strategy_data:
