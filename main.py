@@ -22,7 +22,6 @@ from notifications.telegram_notifier import (
     notify_sell as tg_notify_sell,
     notify_scan_result as tg_notify_scan,
     notify_take_profit_sell as tg_notify_take_profit_sell,
-    ask_confirm as tg_ask_confirm,
 )
 
 import os
@@ -277,14 +276,6 @@ def _run_nasdaq_cycle(ctx: dict, token: str) -> int:
             if _tg(ctx):
                 tg_notify_signal(_tg(ctx), symbol, price, signal_type, market="US")
 
-            # 실전 모드: 텔레그램 확인 후 진행
-            if config.mode == "real" and _tg(ctx):
-                if not tg_ask_confirm(_tg(ctx), symbol, price, signal_type, market="US"):
-                    name = get_stock_name(symbol)
-                    label = f"{symbol}({name})" if name else symbol
-                    logger.info(f"매수 취소 (사용자 거절 또는 타임아웃): {label}")
-                    continue
-
             # 2단계: USD 예산 기반 수량 계산
             quantity = int(per_position_usd // price) if price > 0 else 0
             if quantity < 1:
@@ -437,9 +428,9 @@ def main() -> None:
         strategy = MaCrossStrategy(config.ma_short_period, config.ma_long_period)
         logger.info(f"전략: MA 골든크로스 ({config.ma_short_period}/{config.ma_long_period})")
     price_client = PriceClient(config)
-    telegram_bot = telegram_from_env()
+    telegram_bot = telegram_from_env() if config.mode == "real" else None
 
-    logger.info(f"텔레그램 알림: {'활성화' if telegram_bot else '비활성화'}")
+    logger.info(f"텔레그램 알림: {'활성화' if telegram_bot else '비활성화 (mock)'}")
 
     ctx = {
         "config":        config,

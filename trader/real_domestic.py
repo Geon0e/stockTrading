@@ -8,7 +8,6 @@ from notifications.telegram_notifier import (
     notify_buy as tg_notify_buy,
     notify_sell as tg_notify_sell,
     notify_scan_result as tg_notify_scan,
-    ask_confirm as tg_ask_confirm,
 )
 
 logger = logging.getLogger(__name__)
@@ -136,13 +135,7 @@ def run_real_domestic_cycle(ctx: dict, token: str) -> int:
         if _tg(ctx):
             tg_notify_signal(_tg(ctx), code, price, signal_type)
 
-        # 2단계: 텔레그램 매수 확인 (실전이므로 항상 요청)
-        if _tg(ctx):
-            if not tg_ask_confirm(_tg(ctx), code, price, signal_type):
-                logger.info(f"[실전] 매수 취소 (사용자 거절 또는 타임아웃): {label}")
-                continue
-
-        # 3단계: 매수 주문
+        # 2단계: 매수 주문
         result = ctx["order_client"].buy(code, quantity, token)
         order_no = result.get("output", {}).get("ODNO", "")
         if _tg(ctx):
