@@ -97,7 +97,7 @@ def load_config() -> Config:
         mock_budget=int(os.getenv("MOCK_BUDGET", "500000")),
         real_budget=int(os.getenv("REAL_BUDGET", "500000")),
         real_usd_budget=float(os.getenv("REAL_USD_BUDGET", "750.0")),
-        scan_interval_minutes=int(os.getenv(f"SCAN_INTERVAL_MINUTES_{mode.upper()}", os.getenv("SCAN_INTERVAL_MINUTES", "0"))),
+        scan_interval_minutes=int(os.getenv(f"SCAN_INTERVAL_MINUTES_{mode.upper()}", "0")),
         watchlist=tuple(c.strip() for c in os.getenv("WATCHLIST", "").split(",") if c.strip()),
         **env,
     )

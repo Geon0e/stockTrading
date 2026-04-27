@@ -237,10 +237,9 @@ def api_set_strategy():
 @app.route("/api/config")
 def api_get_config():
     env = _read_env()
-    shared = int(env.get("SCAN_INTERVAL_MINUTES", "0"))
     return jsonify({
-        "scan_interval_minutes_mock": int(env.get("SCAN_INTERVAL_MINUTES_MOCK", str(shared))),
-        "scan_interval_minutes_real": int(env.get("SCAN_INTERVAL_MINUTES_REAL", str(shared))),
+        "scan_interval_minutes_mock": int(env.get("SCAN_INTERVAL_MINUTES_MOCK", "0")),
+        "scan_interval_minutes_real": int(env.get("SCAN_INTERVAL_MINUTES_REAL", "0")),
         "mock_budget": int(env.get("MOCK_BUDGET", "500000")),
         "real_budget": int(env.get("REAL_BUDGET", "500000")),
         "real_usd_budget": float(env.get("REAL_USD_BUDGET", "750.0")),

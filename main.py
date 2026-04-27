@@ -162,6 +162,7 @@ def _run_domestic_cycle(ctx: dict, token: str) -> int:
 
     bought = 0
     capacity = config.max_positions - len(holdings)
+    per_position = config.mock_budget // config.max_positions
     if capacity > 0:
         candidates = ctx["screener"].scan(token, all_stocks=config.scan_all_stocks)
         if candidates:
@@ -172,7 +173,7 @@ def _run_domestic_cycle(ctx: dict, token: str) -> int:
             code          = candidate["code"]
             signal_type   = candidate.get("signal_type", "골든크로스")
             signal_time   = candidate.get("signal_detected_at", datetime.datetime.now().isoformat())
-            price         = candidate["price"]
+            price         = int(candidate["price"])
             if code in holdings:
                 continue
 
@@ -180,17 +181,8 @@ def _run_domestic_cycle(ctx: dict, token: str) -> int:
             if _tg(ctx):
                 tg_notify_signal(_tg(ctx), code, price, signal_type)
 
-            # 실전 모드: 텔레그램 확인 후 진행
-            if config.mode == "real" and _tg(ctx):
-                if not tg_ask_confirm(_tg(ctx), code, price, signal_type):
-                    name = get_stock_name(code)
-                    label = f"{code}({name})" if name else code
-                    logger.info(f"매수 취소 (사용자 거절 또는 타임아웃): {label}")
-                    continue
-
             # 2단계: mock_budget 기반 수량 계산
-            per_position = config.mock_budget // config.max_positions
-            quantity = per_position // int(price) if int(price) > 0 else 0
+            quantity = per_position // price if price > 0 else 0
             if quantity < 1:
                 name = get_stock_name(code)
                 label = f"{code}({name})" if name else code
@@ -265,6 +257,7 @@ def _run_nasdaq_cycle(ctx: dict, token: str) -> int:
 
     bought = 0
     capacity = config.max_positions - len(holdings)
+    per_position_usd = config.real_usd_budget / config.max_positions
     if capacity > 0:
         candidates = ctx["screener"].scan_us(token, mode=config.us_scan_mode)
         if candidates:
@@ -276,7 +269,7 @@ def _run_nasdaq_cycle(ctx: dict, token: str) -> int:
             exchange    = candidate["exchange"]
             signal_type = candidate.get("signal_type", "골든크로스")
             signal_time = candidate.get("signal_detected_at", datetime.datetime.now().isoformat())
-            price       = candidate["price"]
+            price       = float(candidate["price"])
             if symbol in holdings:
                 continue
 
@@ -293,7 +286,6 @@ def _run_nasdaq_cycle(ctx: dict, token: str) -> int:
                     continue
 
             # 2단계: USD 예산 기반 수량 계산
-            per_position_usd = config.real_usd_budget / config.max_positions
             quantity = int(per_position_usd // price) if price > 0 else 0
             if quantity < 1:
                 name = get_stock_name(symbol)
