@@ -1,7 +1,9 @@
 import logging
 import time
 import datetime
+import threading
 import requests
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict
 from config import Config
 from strategy.base_strategy import BaseStrategy
@@ -20,12 +22,13 @@ class StockScreener:
         self._price_client = price_client
         self._strategy = strategy
 
-    def scan(self, token: str, all_stocks: bool = False, top_n: int = 100) -> List[Dict]:
+    def scan(self, token: str, all_stocks: bool = False, top_n: int = 100, max_workers: int = 5) -> List[Dict]:
         """골든크로스 조건에 맞는 종목 반환.
 
         watchlist 설정 시 해당 종목만 스캔.
         all_stocks=True : KOSPI + KOSDAQ 전종목 스캔 (~2,500개)
         all_stocks=False: 거래량 상위 top_n개만 스캔
+        max_workers     : 병렬 스레드 수 (기본 5)
         """
         watchlist = list(self._config.watchlist)
         if watchlist:
@@ -43,36 +46,46 @@ class StockScreener:
             logger.info(f"제외 종목 필터: {before - len(codes)}개 제외 ({', '.join(sorted(exclude))})")
 
         total = len(codes)
-        logger.info(f"스크리닝 시작: {total}개 종목")
+        logger.info(f"스크리닝 시작: {total}개 종목 (스레드: {max_workers}개)")
 
-        results = []
-        for i, code in enumerate(codes, 1):
+        results: List[Dict] = []
+        lock = threading.Lock()
+        done = [0]
+
+        def _check(code: str) -> None:
             try:
                 prices = self._price_client.fetch_closing_prices(
                     code, self._strategy.required_data_points, token
                 )
+                time.sleep(0.05)  # 스레드별 독립 rate limit (전체: ~workers × 20 req/s)
                 if self._strategy.should_buy(prices):
                     name = get_stock_name(code)
-                    results.append({
+                    entry = {
                         "code": code,
                         "name": name,
                         "price": prices[-1],
                         "signal_type": "골든크로스",
                         "signal_detected_at": datetime.datetime.now().isoformat(),
                         "market": "KR",
-                    })
+                    }
+                    with lock:
+                        results.append(entry)
                     label = f"{code}({name})" if name else code
                     logger.info(f"골든크로스 감지: {label} | 현재가: {prices[-1]}")
-                if i % 200 == 0:
-                    logger.info(f"진행: {i}/{total} | 감지: {len(results)}개")
-                time.sleep(0.05)  # API rate limit 방지
             except Exception as e:
                 logger.debug(f"{code} 스킵: {e}")
+            with lock:
+                done[0] += 1
+                if done[0] % 200 == 0:
+                    logger.info(f"진행: {done[0]}/{total} | 감지: {len(results)}개")
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            executor.map(_check, codes)
 
         logger.info(f"스크리닝 완료: {total}개 중 {len(results)}개 골든크로스")
         return results
 
-    def scan_us(self, token: str, mode: str = "nasdaq100") -> List[Dict]:
+    def scan_us(self, token: str, mode: str = "nasdaq100", max_workers: int = 5) -> List[Dict]:
         """미국 주식 골든크로스 스캔.
 
         mode: nasdaq100 | sp500 | all
@@ -84,21 +97,25 @@ class StockScreener:
             stocks = [s for s in stocks if s["symbol"] not in exclude]
             if before != len(stocks):
                 logger.info(f"제외 종목 필터: {before - len(stocks)}개 제외")
-        total  = len(stocks)
-        label  = {"nasdaq100": "나스닥100", "sp500": "S&P500", "all": "미국 전종목"}.get(mode, mode)
-        logger.info(f"{label} 스크리닝 시작: {total}개 종목")
+        total = len(stocks)
+        mode_label = {"nasdaq100": "나스닥100", "sp500": "S&P500", "all": "미국 전종목"}.get(mode, mode)
+        logger.info(f"{mode_label} 스크리닝 시작: {total}개 종목 (스레드: {max_workers}개)")
 
-        results = []
-        for i, stock in enumerate(stocks, 1):
-            symbol   = stock["symbol"]
+        results: List[Dict] = []
+        lock = threading.Lock()
+        done = [0]
+
+        def _check(stock: Dict) -> None:
+            symbol = stock["symbol"]
             exchange = stock["exchange"]
             try:
                 prices = self._price_client.fetch_overseas_closing_prices(
                     symbol, exchange, self._strategy.required_data_points, token
                 )
+                time.sleep(0.1)  # 스레드별 독립 rate limit
                 if self._strategy.should_buy(prices):
                     name = get_stock_name(symbol)
-                    results.append({
+                    entry = {
                         "code": symbol,
                         "name": name,
                         "price": prices[-1],
@@ -106,16 +123,22 @@ class StockScreener:
                         "signal_type": "골든크로스",
                         "signal_detected_at": datetime.datetime.now().isoformat(),
                         "market": "US",
-                    })
+                    }
+                    with lock:
+                        results.append(entry)
                     label = f"{symbol}({name})" if name else symbol
                     logger.info(f"골든크로스 감지: {label} ({exchange}) | 현재가: {prices[-1]}")
-                time.sleep(0.1)
             except Exception as e:
                 logger.debug(f"{symbol} 스킵: {e}")
-            if i % 100 == 0:
-                logger.info(f"진행: {i}/{total} | 감지: {len(results)}개")
+            with lock:
+                done[0] += 1
+                if done[0] % 100 == 0:
+                    logger.info(f"진행: {done[0]}/{total} | 감지: {len(results)}개")
 
-        logger.info(f"{label} 스크리닝 완료: {total}개 중 {len(results)}개 골든크로스")
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            executor.map(_check, stocks)
+
+        logger.info(f"{mode_label} 스크리닝 완료: {total}개 중 {len(results)}개 골든크로스")
         return results
 
     def _fetch_volume_top(self, token: str, top_n: int) -> List[str]:
