@@ -94,6 +94,6 @@ def load_config() -> Config:
         stop_loss_pct=float(os.getenv("STOP_LOSS_PCT", "0")),
         real_budget=int(os.getenv("REAL_BUDGET", "500000")),
         real_usd_budget=float(os.getenv("REAL_USD_BUDGET", "750.0")),
-        scan_interval_minutes=int(os.getenv("SCAN_INTERVAL_MINUTES", "0")),
+        scan_interval_minutes=int(os.getenv(f"SCAN_INTERVAL_MINUTES_{mode.upper()}", os.getenv("SCAN_INTERVAL_MINUTES", "0"))),
         **env,
     )

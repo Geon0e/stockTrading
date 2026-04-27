@@ -434,17 +434,32 @@ code { color: #60a5fa; font-size: 11px; }
     <div class="settings-wrap" id="settingsPanel" style="display:none">
       <div class="cfg-section">
         <div class="cfg-title">스캔 주기</div>
+        <div class="cfg-hint" style="color:#444;margin-bottom:6px">0 입력 시 고정 시간(국내 09:05 / 나스닥 23:35)으로 동작</div>
+
         <div class="cfg-row">
-          <input  type="number" id="cfgIntervalVal" class="cfg-input" min="1" max="9999" placeholder="주기">
-          <select id="cfgUnit" class="cfg-select">
+          <span style="font-size:11px;color:#a78bfa;font-weight:bold;width:36px">MOCK</span>
+          <input  type="number" id="cfgIntervalValMock" class="cfg-input" min="0" max="9999" placeholder="주기">
+          <select id="cfgUnitMock" class="cfg-select">
             <option value="1">분</option>
             <option value="60">시간</option>
             <option value="1440">일</option>
           </select>
-          <button class="cfg-save" onclick="saveConfig()">저장</button>
+          <button class="cfg-save" onclick="saveConfig('mock')">저장</button>
+          <span class="cfg-hint">현재: <span id="cfgCurrentMock">—</span></span>
         </div>
-        <div class="cfg-hint">현재: <span id="cfgCurrent">—</span></div>
-        <div class="cfg-hint" style="color:#444">0 입력 시 고정 시간(국내 09:05 / 나스닥 23:35)으로 동작</div>
+
+        <div class="cfg-row" style="margin-top:8px">
+          <span style="font-size:11px;color:#4ade80;font-weight:bold;width:36px">REAL</span>
+          <input  type="number" id="cfgIntervalValReal" class="cfg-input" min="0" max="9999" placeholder="주기">
+          <select id="cfgUnitReal" class="cfg-select">
+            <option value="1">분</option>
+            <option value="60">시간</option>
+            <option value="1440">일</option>
+          </select>
+          <button class="cfg-save" onclick="saveConfig('real')">저장</button>
+          <span class="cfg-hint">현재: <span id="cfgCurrentReal">—</span></span>
+        </div>
+
         <div class="cfg-msg" id="cfgMsg"></div>
       </div>
     </div>
@@ -724,42 +739,46 @@ function loadPortfolio() {
 // ── 설정 ──────────────────────────────────────────
 function loadConfig() {
   fetch('/api/config').then(r => r.json()).then(d => {
-    const mins = d.scan_interval_minutes || 0;
-    let label;
-    if (mins === 0) {
-      document.getElementById('cfgIntervalVal').value = '';
-      document.getElementById('cfgUnit').value = '1';
-      label = '고정 시간 (국내 09:05 / 나스닥 23:35)';
-    } else if (mins % 1440 === 0) {
-      document.getElementById('cfgIntervalVal').value = mins / 1440;
-      document.getElementById('cfgUnit').value = '1440';
-      label = `${mins / 1440}일마다`;
-    } else if (mins % 60 === 0) {
-      document.getElementById('cfgIntervalVal').value = mins / 60;
-      document.getElementById('cfgUnit').value = '60';
-      label = `${mins / 60}시간마다`;
-    } else {
-      document.getElementById('cfgIntervalVal').value = mins;
-      document.getElementById('cfgUnit').value = '1';
-      label = `${mins}분마다`;
-    }
-    document.getElementById('cfgCurrent').textContent = label;
+    [['mock', d.scan_interval_minutes_mock], ['real', d.scan_interval_minutes_real]].forEach(([m, mins]) => {
+      const suffix = m[0].toUpperCase() + m.slice(1);
+      mins = mins || 0;
+      let label;
+      if (mins === 0) {
+        document.getElementById('cfgIntervalVal' + suffix).value = '';
+        document.getElementById('cfgUnit' + suffix).value = '1';
+        label = '고정 시간';
+      } else if (mins % 1440 === 0) {
+        document.getElementById('cfgIntervalVal' + suffix).value = mins / 1440;
+        document.getElementById('cfgUnit' + suffix).value = '1440';
+        label = `${mins / 1440}일마다`;
+      } else if (mins % 60 === 0) {
+        document.getElementById('cfgIntervalVal' + suffix).value = mins / 60;
+        document.getElementById('cfgUnit' + suffix).value = '60';
+        label = `${mins / 60}시간마다`;
+      } else {
+        document.getElementById('cfgIntervalVal' + suffix).value = mins;
+        document.getElementById('cfgUnit' + suffix).value = '1';
+        label = `${mins}분마다`;
+      }
+      document.getElementById('cfgCurrent' + suffix).textContent = label;
+    });
   }).catch(() => {});
 }
 
-function saveConfig() {
-  const raw  = parseInt(document.getElementById('cfgIntervalVal').value) || 0;
-  const unit = parseInt(document.getElementById('cfgUnit').value);
+function saveConfig(mode) {
+  const suffix = mode[0].toUpperCase() + mode.slice(1);
+  const raw  = parseInt(document.getElementById('cfgIntervalVal' + suffix).value) || 0;
+  const unit = parseInt(document.getElementById('cfgUnit' + suffix).value);
   const mins = raw * unit;
   const msg  = document.getElementById('cfgMsg');
   fetch('/api/config', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scan_interval_minutes: mins }),
+    body: JSON.stringify({ mode, scan_interval_minutes: mins }),
   }).then(r => r.json()).then(d => {
     if (d.ok) {
       msg.className = 'cfg-msg ok';
-      msg.textContent = '저장됨 — 봇 재시작 시 적용됩니다';
+      msg.textContent = `${mode.toUpperCase()} 저장됨 — 봇 재시작 시 적용됩니다`;
       loadConfig();
     } else {
       msg.className = 'cfg-msg err';

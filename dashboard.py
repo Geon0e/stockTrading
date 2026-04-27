@@ -184,8 +184,10 @@ def api_bot_deploy():
 @app.route("/api/config")
 def api_get_config():
     env = _read_env()
+    shared = int(env.get("SCAN_INTERVAL_MINUTES", "0"))
     return jsonify({
-        "scan_interval_minutes": int(env.get("SCAN_INTERVAL_MINUTES", "0")),
+        "scan_interval_minutes_mock": int(env.get("SCAN_INTERVAL_MINUTES_MOCK", str(shared))),
+        "scan_interval_minutes_real": int(env.get("SCAN_INTERVAL_MINUTES_REAL", str(shared))),
     })
 
 
@@ -193,10 +195,11 @@ def api_get_config():
 def api_set_config():
     data = request.get_json(silent=True) or {}
     if "scan_interval_minutes" in data:
+        mode = _valid_mode(data.get("mode", "mock"))
         val = int(data["scan_interval_minutes"])
         if val < 0:
             return jsonify({"ok": False, "error": "유효하지 않은 값"}), 400
-        _write_env_key("SCAN_INTERVAL_MINUTES", str(val))
+        _write_env_key(f"SCAN_INTERVAL_MINUTES_{mode.upper()}", str(val))
     return jsonify({"ok": True})
 
 
