@@ -55,6 +55,7 @@ class Config:
     real_usd_budget: float  # 실전 해외주식 예산 USD
     scan_interval_minutes: int  # 스캔 주기(분). 0 = 고정시간(국내 09:05 / 나스닥 23:35)
     watchlist: tuple        # 커스텀 스캔 종목 리스트. 비어있으면 기본 스캔(전종목/거래량 상위)
+    exclude_list: tuple     # 거래 제외 종목 코드 리스트 (모드 무관 적용)
 
 
 def load_config() -> Config:
@@ -99,5 +100,6 @@ def load_config() -> Config:
         real_usd_budget=float(os.getenv("REAL_USD_BUDGET", "750.0")),
         scan_interval_minutes=int(os.getenv(f"SCAN_INTERVAL_MINUTES_{mode.upper()}", "0")),
         watchlist=tuple(c.strip() for c in os.getenv("WATCHLIST", "").split(",") if c.strip()),
+        exclude_list=tuple(c.strip() for c in os.getenv("EXCLUDE_LIST", "").split(",") if c.strip()),
         **env,
     )

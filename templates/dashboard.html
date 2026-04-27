@@ -523,6 +523,14 @@ code { color: #60a5fa; font-size: 11px; }
             placeholder="005930,000660,035720"></textarea>
         </div>
 
+        <div style="margin-top:10px">
+          <div style="font-size:10px;color:#e87070;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">제외 종목 <span style="color:#555;font-weight:normal;text-transform:none">(거래하지 않을 종목코드 — mock/real 공통 적용)</span></div>
+          <textarea id="cfgExcludeList" rows="2"
+            style="width:100%;background:#1a1a1a;border:1px solid #4a2020;border-radius:4px;
+                   color:#e87070;font-family:inherit;font-size:12px;padding:6px 8px;resize:vertical"
+            placeholder="012340,000660"></textarea>
+        </div>
+
         <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
           <button class="cfg-save" onclick="saveBudget()">저장</button>
           <div class="cfg-msg" id="budgetMsg"></div>
@@ -956,12 +964,14 @@ function loadConfig() {
     const mp = document.getElementById('cfgMaxPositions');
     const oq = document.getElementById('cfgOrderQty');
     const wl = document.getElementById('cfgWatchlist');
+    const el = document.getElementById('cfgExcludeList');
     if (mb) mb.value = d.mock_budget ?? '';
     if (rb) rb.value = d.real_budget ?? '';
     if (ru) ru.value = d.real_usd_budget ?? '';
     if (mp) mp.value = d.max_positions ?? '';
     if (oq) oq.value = d.order_quantity ?? '';
     if (wl) wl.value = d.watchlist ?? '';
+    if (el) el.value = d.exclude_list ?? '';
   }).catch(() => {});
 }
 
@@ -973,7 +983,8 @@ function saveBudget() {
   const mp = parseInt(document.getElementById('cfgMaxPositions').value) || 0;
   const oq = parseInt(document.getElementById('cfgOrderQty').value) || 0;
   const wl = document.getElementById('cfgWatchlist').value.trim();
-  const payload = { watchlist: wl };
+  const el = document.getElementById('cfgExcludeList').value.trim();
+  const payload = { watchlist: wl, exclude_list: el };
   if (mb > 0) payload.mock_budget = mb;
   if (rb > 0) payload.real_budget = rb;
   if (ru > 0) payload.real_usd_budget = ru;

@@ -36,6 +36,12 @@ class StockScreener:
         else:
             codes = self._fetch_volume_top(token, top_n)
 
+        exclude = set(self._config.exclude_list)
+        if exclude:
+            before = len(codes)
+            codes = [c for c in codes if c not in exclude]
+            logger.info(f"제외 종목 필터: {before - len(codes)}개 제외 ({', '.join(sorted(exclude))})")
+
         total = len(codes)
         logger.info(f"스크리닝 시작: {total}개 종목")
 
@@ -72,6 +78,12 @@ class StockScreener:
         mode: nasdaq100 | sp500 | all
         """
         stocks = fetch_us_stocks(mode)
+        exclude = set(self._config.exclude_list)
+        if exclude:
+            before = len(stocks)
+            stocks = [s for s in stocks if s["symbol"] not in exclude]
+            if before != len(stocks):
+                logger.info(f"제외 종목 필터: {before - len(stocks)}개 제외")
         total  = len(stocks)
         label  = {"nasdaq100": "나스닥100", "sp500": "S&P500", "all": "미국 전종목"}.get(mode, mode)
         logger.info(f"{label} 스크리닝 시작: {total}개 종목")

@@ -246,6 +246,7 @@ def api_get_config():
         "max_positions": int(env.get("MAX_POSITIONS", "5")),
         "order_quantity": int(env.get("ORDER_QUANTITY", "1")),
         "watchlist": env.get("WATCHLIST", ""),
+        "exclude_list": env.get("EXCLUDE_LIST", ""),
     })
 
 
@@ -277,6 +278,9 @@ def api_set_config():
     if "watchlist" in data:
         cleaned = ",".join(c.strip() for c in str(data["watchlist"]).split(",") if c.strip())
         _write_env_key("WATCHLIST", cleaned)
+    if "exclude_list" in data:
+        cleaned = ",".join(c.strip() for c in str(data["exclude_list"]).split(",") if c.strip())
+        _write_env_key("EXCLUDE_LIST", cleaned)
     return jsonify({"ok": True})
 
 
