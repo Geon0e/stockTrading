@@ -244,6 +244,8 @@ def api_get_config():
         "mock_budget": int(env.get("MOCK_BUDGET", "500000")),
         "real_budget": int(env.get("REAL_BUDGET", "500000")),
         "real_usd_budget": float(env.get("REAL_USD_BUDGET", "750.0")),
+        "max_positions": int(env.get("MAX_POSITIONS", "5")),
+        "order_quantity": int(env.get("ORDER_QUANTITY", "1")),
         "watchlist": env.get("WATCHLIST", ""),
     })
 
@@ -263,6 +265,16 @@ def api_set_config():
         _write_env_key("REAL_BUDGET", str(int(data["real_budget"])))
     if "real_usd_budget" in data:
         _write_env_key("REAL_USD_BUDGET", str(float(data["real_usd_budget"])))
+    if "max_positions" in data:
+        val = int(data["max_positions"])
+        if val < 1:
+            return jsonify({"ok": False, "error": "최대 보유 종목 수는 1 이상이어야 합니다"}), 400
+        _write_env_key("MAX_POSITIONS", str(val))
+    if "order_quantity" in data:
+        val = int(data["order_quantity"])
+        if val < 1:
+            return jsonify({"ok": False, "error": "주문 수량은 1 이상이어야 합니다"}), 400
+        _write_env_key("ORDER_QUANTITY", str(val))
     if "watchlist" in data:
         cleaned = ",".join(c.strip() for c in str(data["watchlist"]).split(",") if c.strip())
         _write_env_key("WATCHLIST", cleaned)

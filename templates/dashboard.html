@@ -489,7 +489,7 @@ code { color: #60a5fa; font-size: 11px; }
 
       <!-- 예산 설정 -->
       <div class="cfg-section">
-        <div class="cfg-title">예산 설정</div>
+        <div class="cfg-title">예산 / 주문 설정</div>
 
         <div class="cfg-row">
           <span style="font-size:11px;color:#a78bfa;font-weight:bold;width:80px">MOCK 예산</span>
@@ -503,6 +503,15 @@ code { color: #60a5fa; font-size: 11px; }
           <span class="cfg-hint">원</span>
           <input type="number" id="cfgRealUsdBudget" class="cfg-input" style="width:90px" min="0" step="0.01" placeholder="USD">
           <span class="cfg-hint">USD</span>
+        </div>
+
+        <div class="cfg-row" style="margin-top:6px">
+          <span style="font-size:11px;color:#888;width:80px">최대 보유</span>
+          <input type="number" id="cfgMaxPositions" class="cfg-input" style="width:70px" min="1" max="100" placeholder="종목수">
+          <span class="cfg-hint">종목</span>
+          <span style="font-size:11px;color:#555;margin-left:12px">주문 수량</span>
+          <input type="number" id="cfgOrderQty" class="cfg-input" style="width:70px" min="1" placeholder="주">
+          <span class="cfg-hint">주 (mock)</span>
         </div>
 
         <div style="margin-top:10px">
@@ -943,10 +952,14 @@ function loadConfig() {
     const mb = document.getElementById('cfgMockBudget');
     const rb = document.getElementById('cfgRealBudget');
     const ru = document.getElementById('cfgRealUsdBudget');
+    const mp = document.getElementById('cfgMaxPositions');
+    const oq = document.getElementById('cfgOrderQty');
     const wl = document.getElementById('cfgWatchlist');
     if (mb) mb.value = d.mock_budget ?? '';
     if (rb) rb.value = d.real_budget ?? '';
     if (ru) ru.value = d.real_usd_budget ?? '';
+    if (mp) mp.value = d.max_positions ?? '';
+    if (oq) oq.value = d.order_quantity ?? '';
     if (wl) wl.value = d.watchlist ?? '';
   }).catch(() => {});
 }
@@ -956,11 +969,16 @@ function saveBudget() {
   const mb = parseInt(document.getElementById('cfgMockBudget').value) || 0;
   const rb = parseInt(document.getElementById('cfgRealBudget').value) || 0;
   const ru = parseFloat(document.getElementById('cfgRealUsdBudget').value) || 0;
+  const mp = parseInt(document.getElementById('cfgMaxPositions').value) || 0;
+  const oq = parseInt(document.getElementById('cfgOrderQty').value) || 0;
   const wl = document.getElementById('cfgWatchlist').value.trim();
+  const payload = { mock_budget: mb, real_budget: rb, real_usd_budget: ru, watchlist: wl };
+  if (mp > 0) payload.max_positions = mp;
+  if (oq > 0) payload.order_quantity = oq;
   fetch('/api/config', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mock_budget: mb, real_budget: rb, real_usd_budget: ru, watchlist: wl }),
+    body: JSON.stringify(payload),
   }).then(r => r.json()).then(d => {
     msg.className = 'cfg-msg ' + (d.ok ? 'ok' : 'err');
     msg.textContent = d.ok ? '저장됨 — 봇 재시작 시 적용됩니다' : (d.error || '저장 실패');
