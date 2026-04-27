@@ -26,6 +26,8 @@ from notifications.telegram_notifier import (
 )
 
 import os
+import json
+from pathlib import Path
 from logging.handlers import RotatingFileHandler
 
 _LOG_DIR = "logs"
@@ -306,6 +308,15 @@ def _run_nasdaq_cycle(ctx: dict, token: str) -> int:
     return bought
 
 
+def _save_holdings_snapshot(mode: str, holdings: dict) -> None:
+    path = Path(_LOG_DIR) / f"holdings_{mode}.json"
+    items = [
+        {"code": code, "name": get_stock_name(code) or "", "qty": info["qty"], "avg_price": float(info.get("avg_price", 0))}
+        for code, info in holdings.items()
+    ]
+    path.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+
+
 def run_stop_loss_check(ctx: dict) -> None:
     """장중 손절 체크 — 보유 국내주식 실시간 현재가 기준으로 매분 확인"""
     if not is_market_open():
@@ -316,6 +327,7 @@ def run_stop_loss_check(ctx: dict) -> None:
     try:
         token    = ctx["token_manager"].get_valid_token()
         holdings = ctx["order_client"].get_holdings(token)
+        _save_holdings_snapshot(ctx["config"].mode, holdings)
         for stock_code, info in list(holdings.items()):
             avg_price = float(info.get("avg_price") or 0)
             if avg_price <= 0:

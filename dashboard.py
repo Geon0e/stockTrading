@@ -210,6 +210,12 @@ def api_trades():
 @app.route("/api/portfolio")
 def api_portfolio():
     mode = _valid_mode(request.args.get("mode", "mock"))
+    snapshot_path = _BASE / f"logs/holdings_{mode}.json"
+    if snapshot_path.exists():
+        try:
+            return jsonify(json.loads(snapshot_path.read_text(encoding="utf-8")))
+        except Exception:
+            pass
     records = _load_trades(mode)
     holdings = {}
     for r in records:
