@@ -55,7 +55,11 @@ def run_real_domestic_cycle(ctx: dict, token: str) -> int:
         if config.stop_loss_pct > 0 and avg_price > 0:
             drop_pct = (current_price - avg_price) / avg_price * 100
             if drop_pct <= -config.stop_loss_pct:
-                result = ctx["order_client"].sell(stock_code, qty, token)
+                try:
+                    result = ctx["order_client"].sell(stock_code, qty, token)
+                except Exception as e:
+                    logger.warning(f"[실전] 손절 매도 실패 [{stock_code}]: {e} — 스킵")
+                    continue
                 ctx["trade_logger"].log("SELL", stock_code, qty, result, signal_type="손절")
                 del holdings[stock_code]
                 if _tg(ctx):
@@ -72,7 +76,11 @@ def run_real_domestic_cycle(ctx: dict, token: str) -> int:
             profit_pct = (current_price - avg_price) / avg_price * 100
             logger.info(f"[실전] 전략 매도 스킵 (손실 중 {profit_pct:.1f}%): {label}")
         elif ctx["strategy"].should_sell(prices):
-            result = ctx["order_client"].sell(stock_code, qty, token)
+            try:
+                result = ctx["order_client"].sell(stock_code, qty, token)
+            except Exception as e:
+                logger.warning(f"[실전] 전략 매도 실패 [{stock_code}]: {e} — 스킵")
+                continue
             ctx["trade_logger"].log("SELL", stock_code, qty, result)
             del holdings[stock_code]
             if _tg(ctx):
