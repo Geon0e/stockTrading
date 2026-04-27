@@ -514,6 +514,19 @@ code { color: #60a5fa; font-size: 11px; }
         </div>
 
         <div style="margin-top:10px">
+          <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">스캔 범위</div>
+          <div class="cfg-row">
+            <label class="cfg-toggle"><input type="checkbox" id="cfgScanAll"><span></span></label>
+            <span style="font-size:12px;color:#ccc;margin-left:4px">국내 전종목</span>
+            <span style="font-size:11px;color:#555;margin-left:6px">꺼면 거래량 상위 100개만</span>
+          </div>
+          <div class="cfg-row" style="margin-top:6px">
+            <label class="cfg-toggle"><input type="checkbox" id="cfgScanNasdaq"><span></span></label>
+            <span style="font-size:12px;color:#ccc;margin-left:4px">나스닥 스캔</span>
+          </div>
+        </div>
+
+        <div style="margin-top:10px">
           <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">스캔 종목 <span style="color:#333;font-weight:normal;text-transform:none">(비워두면 자동 스캔)</span></div>
           <textarea id="cfgWatchlist" rows="2"
             style="width:100%;background:#1a1a1a;border:1px solid #333;border-radius:4px;
@@ -527,11 +540,6 @@ code { color: #60a5fa; font-size: 11px; }
             style="width:100%;background:#1a1a1a;border:1px solid #4a2020;border-radius:4px;
                    color:#e87070;font-family:inherit;font-size:12px;padding:6px 8px;resize:vertical"
             placeholder="012340"></textarea>
-        </div>
-
-        <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
-          <button class="cfg-save" onclick="saveSettings()">저장</button>
-          <div class="cfg-msg" id="settingsMsg"></div>
         </div>
 
         <div style="margin-top:10px">
@@ -652,9 +660,9 @@ code { color: #60a5fa; font-size: 11px; }
           </span>
         </div>
 
-        <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
-          <button class="cfg-save" onclick="saveStrategy()">전략 저장</button>
-          <div class="cfg-msg" id="stMsg"></div>
+        <div style="margin-top:16px;display:flex;gap:8px;align-items:center;padding-top:12px;border-top:1px solid #1e1e1e">
+          <button class="cfg-save" style="padding:7px 20px;font-size:13px" onclick="saveAndRestart()">💾 저장 후 재시작</button>
+          <div class="cfg-msg" id="settingsMsg"></div>
         </div>
       </div>
 
@@ -945,6 +953,67 @@ function loadPortfolio() {
   }).catch(() => {});
 }
 
+// ── 통합 저장 후 재시작 ────────────────────────────
+function saveAndRestart() {
+  const ni = id => parseInt(document.getElementById(id).value) || 0;
+  const nf = id => parseFloat(document.getElementById(id).value) || 0;
+  const ck = id => document.getElementById(id).checked;
+  const sv = id => document.getElementById(id).value;
+
+  const raw  = parseInt(document.getElementById('cfgIntervalVal').value) || 0;
+  const unit = parseInt(document.getElementById('cfgUnit').value);
+  const cfg = {
+    scan_interval_minutes: raw * unit,
+    watchlist:      document.getElementById('cfgWatchlist').value.trim(),
+    exclude_list:   document.getElementById('cfgExcludeList').value.trim(),
+    scan_all_stocks: document.getElementById('cfgScanAll').checked,
+    scan_nasdaq:     document.getElementById('cfgScanNasdaq').checked,
+  };
+  const budget = parseInt(document.getElementById('cfgBudget').value) || 0;
+  const mp = parseInt(document.getElementById('cfgMaxPositions').value) || 0;
+  const oq = parseInt(document.getElementById('cfgOrderQty').value) || 0;
+  if (budget > 0) cfg.budget = budget;
+  if (mp > 0) cfg.max_positions = mp;
+  if (oq > 0) cfg.order_quantity = oq;
+  if (activeMode === 'real') {
+    const usd = parseFloat(document.getElementById('cfgUsdBudget').value) || 0;
+    if (usd > 0) cfg.usd_budget = usd;
+  }
+
+  const strategy = {
+    buy: {
+      '단기 골든크로스': { '활성화': ck('stBuyGc1'), '조건': sv('stBuyGc1Cond'), '단기': ni('stBuyGc1Short'), '장기': ni('stBuyGc1Long') },
+      '장기 골든크로스': { '활성화': ck('stBuyGc2'), '조건': sv('stBuyGc2Cond'), '단기': ni('stBuyGc2Short'), '장기': ni('stBuyGc2Long') },
+      'RSI':            { '활성화': ck('stBuyRsi'),  '조건': sv('stBuyRsiCond'),  '기간': ni('stBuyRsiPer'), '매수 기준 이하': ni('stBuyRsiThr') },
+      'MACD':           { '활성화': ck('stBuyMacd'), '조건': sv('stBuyMacdCond'), '단기': ni('stBuyMacdS'), '장기': ni('stBuyMacdL'), '시그널': ni('stBuyMacdSig') },
+      '볼린저밴드':     { '활성화': ck('stBuyBb'),   '조건': sv('stBuyBbCond'),   '기간': ni('stBuyBbPer'), '표준편차': nf('stBuyBbStd') },
+    },
+    sell: {
+      '단기 데드크로스': { '활성화': ck('stSellDc1'),  '조건': sv('stSellDc1Cond'),  '단기': ni('stSellDc1Short'), '장기': ni('stSellDc1Long') },
+      '장기 데드크로스': { '활성화': ck('stSellDc2'),  '조건': sv('stSellDc2Cond'),  '단기': ni('stSellDc2Short'), '장기': ni('stSellDc2Long') },
+      'RSI 과매수':      { '활성화': ck('stSellRsi'),  '조건': sv('stSellRsiCond'),  '매도 기준 이상': ni('stSellRsiThr') },
+      'MACD 데드크로스': { '활성화': ck('stSellMacd'), '조건': sv('stSellMacdCond'), '단기': ni('stSellMacdS'), '장기': ni('stSellMacdL'), '시그널': ni('stSellMacdSig') },
+      '볼린저밴드 상단': { '활성화': ck('stSellBb'),   '조건': sv('stSellBbCond'),   '기간': ni('stSellBbPer'), '표준편차': nf('stSellBbStd') },
+    },
+  };
+
+  const msg = document.getElementById('settingsMsg');
+  msg.className = 'cfg-msg'; msg.textContent = '저장 중…';
+
+  fetch('/api/save-restart', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: activeMode, config: cfg, strategy }),
+  }).then(r => r.json()).then(d => {
+    msg.className = 'cfg-msg ' + (d.ok ? 'ok' : 'err');
+    msg.textContent = d.ok
+      ? `[${activeMode.toUpperCase()}] 저장 완료 · 재시작됨 (PID ${d.pid})`
+      : (d.error || '저장 실패');
+    if (d.ok) { loadSettings(); loadSettingsHistory(); loadStatus(); }
+    setTimeout(() => { msg.textContent = ''; }, 4000);
+  }).catch(() => { msg.className = 'cfg-msg err'; msg.textContent = '서버 오류'; });
+}
+
 // ── 설정 ──────────────────────────────────────────
 function loadSettings() {
   fetch('/api/config?mode=' + activeMode).then(r => r.json()).then(d => {
@@ -980,39 +1049,12 @@ function loadSettings() {
     document.getElementById('cfgOrderQty').value = d.order_quantity ?? '';
     document.getElementById('cfgWatchlist').value = d.watchlist ?? '';
     document.getElementById('cfgExcludeList').value = d.exclude_list ?? '';
+    document.getElementById('cfgScanAll').checked = !!d.scan_all_stocks;
+    document.getElementById('cfgScanNasdaq').checked = !!d.scan_nasdaq;
   }).catch(() => {});
   loadSettingsHistory();
 }
 
-function saveSettings() {
-  const raw  = parseInt(document.getElementById('cfgIntervalVal').value) || 0;
-  const unit = parseInt(document.getElementById('cfgUnit').value);
-  const mins = raw * unit;
-  const budget = parseInt(document.getElementById('cfgBudget').value) || 0;
-  const mp = parseInt(document.getElementById('cfgMaxPositions').value) || 0;
-  const oq = parseInt(document.getElementById('cfgOrderQty').value) || 0;
-  const wl = document.getElementById('cfgWatchlist').value.trim();
-  const el = document.getElementById('cfgExcludeList').value.trim();
-  const msg = document.getElementById('settingsMsg');
-  const payload = { mode: activeMode, scan_interval_minutes: mins, watchlist: wl, exclude_list: el };
-  if (budget > 0) payload.budget = budget;
-  if (mp > 0) payload.max_positions = mp;
-  if (oq > 0) payload.order_quantity = oq;
-  if (activeMode === 'real') {
-    const usd = parseFloat(document.getElementById('cfgUsdBudget').value) || 0;
-    if (usd > 0) payload.usd_budget = usd;
-  }
-  fetch('/api/config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  }).then(r => r.json()).then(d => {
-    msg.className = 'cfg-msg ' + (d.ok ? 'ok' : 'err');
-    msg.textContent = d.ok ? `[${activeMode.toUpperCase()}] 저장됨 — 봇 재시작 시 적용됩니다` : (d.error || '저장 실패');
-    if (d.ok) loadSettings();
-    setTimeout(() => { msg.textContent = ''; }, 3000);
-  }).catch(() => { msg.className = 'cfg-msg err'; msg.textContent = '서버 오류'; });
-}
 
 function loadSettingsHistory() {
   fetch('/api/settings/history?mode=' + activeMode).then(r => r.json()).then(records => {
@@ -1093,39 +1135,6 @@ function loadStrategy() {
   }).catch(() => {});
 }
 
-function saveStrategy() {
-  const ni = id => parseInt(document.getElementById(id).value) || 0;
-  const nf = id => parseFloat(document.getElementById(id).value) || 0;
-  const ck = id => document.getElementById(id).checked;
-  const sv = id => document.getElementById(id).value;
-  const config = {
-    mode: activeMode,
-    buy: {
-      '단기 골든크로스': { '활성화': ck('stBuyGc1'), '조건': sv('stBuyGc1Cond'), '단기': ni('stBuyGc1Short'), '장기': ni('stBuyGc1Long') },
-      '장기 골든크로스': { '활성화': ck('stBuyGc2'), '조건': sv('stBuyGc2Cond'), '단기': ni('stBuyGc2Short'), '장기': ni('stBuyGc2Long') },
-      'RSI':            { '활성화': ck('stBuyRsi'),  '조건': sv('stBuyRsiCond'),  '기간': ni('stBuyRsiPer'), '매수 기준 이하': ni('stBuyRsiThr') },
-      'MACD':           { '활성화': ck('stBuyMacd'), '조건': sv('stBuyMacdCond'), '단기': ni('stBuyMacdS'), '장기': ni('stBuyMacdL'), '시그널': ni('stBuyMacdSig') },
-      '볼린저밴드':     { '활성화': ck('stBuyBb'),   '조건': sv('stBuyBbCond'),   '기간': ni('stBuyBbPer'), '표준편차': nf('stBuyBbStd') },
-    },
-    sell: {
-      '단기 데드크로스':  { '활성화': ck('stSellDc1'),  '조건': sv('stSellDc1Cond'),  '단기': ni('stSellDc1Short'), '장기': ni('stSellDc1Long') },
-      '장기 데드크로스':  { '활성화': ck('stSellDc2'),  '조건': sv('stSellDc2Cond'),  '단기': ni('stSellDc2Short'), '장기': ni('stSellDc2Long') },
-      'RSI 과매수':       { '활성화': ck('stSellRsi'),  '조건': sv('stSellRsiCond'),   '매도 기준 이상': ni('stSellRsiThr') },
-      'MACD 데드크로스':  { '활성화': ck('stSellMacd'), '조건': sv('stSellMacdCond'),  '단기': ni('stSellMacdS'), '장기': ni('stSellMacdL'), '시그널': ni('stSellMacdSig') },
-      '볼린저밴드 상단':  { '활성화': ck('stSellBb'),   '조건': sv('stSellBbCond'),    '기간': ni('stSellBbPer'), '표준편차': nf('stSellBbStd') },
-    },
-  };
-  const msg = document.getElementById('stMsg');
-  fetch('/api/strategy', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(config),
-  }).then(r => r.json()).then(d => {
-    msg.className = 'cfg-msg ' + (d.ok ? 'ok' : 'err');
-    msg.textContent = d.ok ? `[${activeMode.toUpperCase()}] 전략 저장됨 — 봇 재시작 시 적용됩니다` : (d.error || '저장 실패');
-    setTimeout(() => { msg.textContent = ''; }, 3000);
-  }).catch(() => { msg.className = 'cfg-msg err'; msg.textContent = '서버 오류'; });
-}
 
 // ── 모바일 탭 ──────────────────────────────────────
 function switchMobTab(tab) {

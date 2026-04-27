@@ -284,14 +284,17 @@ def api_get_config():
     mode = _valid_mode(request.args.get("mode", "mock"))
     env = _read_env()
     budget = int(env.get("MOCK_BUDGET", "500000")) if mode == "mock" else int(env.get("REAL_BUDGET", "500000"))
+    m = mode.upper()
     result = {
         "mode": mode,
-        "scan_interval_minutes": int(env.get(f"SCAN_INTERVAL_MINUTES_{mode.upper()}", "0")),
+        "scan_interval_minutes": int(env.get(f"SCAN_INTERVAL_MINUTES_{m}", "0")),
         "budget": budget,
-        "max_positions": int(env.get(f"MAX_POSITIONS_{mode.upper()}", env.get("MAX_POSITIONS", "5"))),
-        "order_quantity": int(env.get(f"ORDER_QUANTITY_{mode.upper()}", env.get("ORDER_QUANTITY", "1"))),
-        "watchlist": env.get(f"WATCHLIST_{mode.upper()}", env.get("WATCHLIST", "")),
-        "exclude_list": env.get(f"EXCLUDE_LIST_{mode.upper()}", env.get("EXCLUDE_LIST", "")),
+        "max_positions": int(env.get(f"MAX_POSITIONS_{m}", env.get("MAX_POSITIONS", "5"))),
+        "order_quantity": int(env.get(f"ORDER_QUANTITY_{m}", env.get("ORDER_QUANTITY", "1"))),
+        "watchlist": env.get(f"WATCHLIST_{m}", env.get("WATCHLIST", "")),
+        "exclude_list": env.get(f"EXCLUDE_LIST_{m}", env.get("EXCLUDE_LIST", "")),
+        "scan_all_stocks": env.get(f"SCAN_ALL_STOCKS_{m}", env.get("SCAN_ALL_STOCKS", "false")).lower() == "true",
+        "scan_nasdaq": env.get(f"SCAN_NASDAQ_{m}", env.get("SCAN_NASDAQ", "false")).lower() == "true",
     }
     if mode == "real":
         result["usd_budget"] = float(env.get("REAL_USD_BUDGET", "750.0"))
@@ -398,6 +401,16 @@ def api_save_restart():
         cleaned = ",".join(c.strip() for c in str(cfg["exclude_list"]).split(",") if c.strip())
         _write_env_key(f"EXCLUDE_LIST_{mode.upper()}", cleaned)
         changes["제외 종목"] = cleaned if cleaned else "없음"
+
+    if "scan_all_stocks" in cfg:
+        val = bool(cfg["scan_all_stocks"])
+        _write_env_key(f"SCAN_ALL_STOCKS_{mode.upper()}", "true" if val else "false")
+        changes["국내 스캔"] = "전종목" if val else "거래량 상위"
+
+    if "scan_nasdaq" in cfg:
+        val = bool(cfg["scan_nasdaq"])
+        _write_env_key(f"SCAN_NASDAQ_{mode.upper()}", "true" if val else "false")
+        changes["나스닥 스캔"] = "활성화" if val else "비활성화"
 
     # ── 전략 저장 ──────────────────────────────────────────────────────────
     if strategy_data:
