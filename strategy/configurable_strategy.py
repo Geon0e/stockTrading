@@ -45,12 +45,18 @@ class ConfigurableStrategy(BaseStrategy):
         active = [(name, cfg) for name, cfg in self._buy.items() if cfg.get("활성화")]
         if not active:
             return False
-        results = []
-        for name, cfg in active:
+        and_conds = [(n, c) for n, c in active if str(c.get("조건", "AND")).upper() != "OR"]
+        or_conds  = [(n, c) for n, c in active if str(c.get("조건", "AND")).upper() == "OR"]
+        for name, cfg in and_conds:
             ok = self._eval_buy(name, cfg, prices)
-            logger.debug(f"매수 조건 [{name}]: {'✓' if ok else '✗'}")
-            results.append(ok)
-        return all(results)
+            logger.debug(f"매수 AND [{name}]: {'✓' if ok else '✗'}")
+            if not ok:
+                return False
+        if or_conds:
+            any_ok = any(self._eval_buy(n, c, prices) for n, c in or_conds)
+            logger.debug(f"매수 OR 풀: {'✓' if any_ok else '✗'}")
+            return any_ok
+        return len(and_conds) > 0
 
     def _eval_buy(self, name: str, cfg: dict, prices: List[Decimal]) -> bool:
         if "골든크로스" in name:
@@ -79,14 +85,19 @@ class ConfigurableStrategy(BaseStrategy):
 
     # ── 매도 ────────────────────────────────────────────
     def should_sell(self, prices: List[Decimal]) -> bool:
-        for name, cfg in self._sell.items():
-            if not cfg.get("활성화"):
-                continue
+        active = [(name, cfg) for name, cfg in self._sell.items() if cfg.get("활성화")]
+        if not active:
+            return False
+        and_conds = [(n, c) for n, c in active if str(c.get("조건", "OR")).upper() == "AND"]
+        or_conds  = [(n, c) for n, c in active if str(c.get("조건", "OR")).upper() != "AND"]
+        for name, cfg in and_conds:
             ok = self._eval_sell(name, cfg, prices)
-            if ok:
-                logger.debug(f"매도 조건 충족 [{name}]")
-                return True
-        return False
+            logger.debug(f"매도 AND [{name}]: {'✓' if ok else '✗'}")
+            if not ok:
+                return False
+        if or_conds:
+            return any(self._eval_sell(n, c, prices) for n, c in or_conds)
+        return len(and_conds) > 0
 
     def _eval_sell(self, name: str, cfg: dict, prices: List[Decimal]) -> bool:
         if "데드크로스" in name:
