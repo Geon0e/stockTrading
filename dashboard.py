@@ -457,7 +457,8 @@ def api_settings_history():
     history_path = _BASE / "logs/settings_history.jsonl"
     if not history_path.exists():
         return jsonify([])
-    records = []
+    # 날짜별 마지막 레코드만 유지 (파일은 시간순이므로 뒤에 올수록 최신)
+    by_date: dict = {}
     for line in history_path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:
@@ -465,10 +466,12 @@ def api_settings_history():
         try:
             r = json.loads(line)
             if r.get("mode") == mode:
-                records.append(r)
+                date = r.get("timestamp", "")[:10]  # "2026-04-27"
+                by_date[date] = r
         except json.JSONDecodeError:
             pass
-    return jsonify(list(reversed(records[-50:])))
+    records = sorted(by_date.values(), key=lambda r: r["timestamp"], reverse=True)
+    return jsonify(records[:50])
 
 
 @app.route("/api/trades")
