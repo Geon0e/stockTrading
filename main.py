@@ -308,12 +308,8 @@ def _run_nasdaq_cycle(ctx: dict, token: str) -> int:
     return bought
 
 
-def _save_holdings_snapshot(mode: str, holdings: dict) -> None:
+def _save_holdings_snapshot(mode: str, items: list) -> None:
     path = Path(_LOG_DIR) / f"holdings_{mode}.json"
-    items = [
-        {"code": code, "name": get_stock_name(code) or "", "qty": info["qty"], "avg_price": float(info.get("avg_price", 0))}
-        for code, info in holdings.items()
-    ]
     path.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
 
 
@@ -327,17 +323,30 @@ def run_stop_loss_check(ctx: dict) -> None:
     try:
         token    = ctx["token_manager"].get_valid_token()
         holdings = ctx["order_client"].get_holdings(token)
-        _save_holdings_snapshot(ctx["config"].mode, holdings)
+        snapshot = []
         for stock_code, info in list(holdings.items()):
             avg_price = float(info.get("avg_price") or 0)
+            item = {
+                "code": stock_code,
+                "name": get_stock_name(stock_code) or "",
+                "qty": info["qty"],
+                "avg_price": avg_price,
+                "current_price": None,
+                "profit_pct": None,
+            }
             if avg_price <= 0:
+                snapshot.append(item)
                 continue
             try:
                 current_price = float(ctx["price_client"].fetch_current_price(stock_code, token))
+                item["current_price"] = current_price
+                item["profit_pct"] = round((current_price - avg_price) / avg_price * 100, 2)
             except Exception as e:
                 logger.debug(f"현재가 조회 실패 [{stock_code}]: {e}")
+                snapshot.append(item)
                 continue
-            profit_pct = (current_price - avg_price) / avg_price * 100
+            snapshot.append(item)
+            profit_pct = item["profit_pct"]
             if profit_pct > 20:
                 logger.debug(f"손절 스킵 (수익률 {profit_pct:.1f}% > 20%): {stock_code}")
                 continue
@@ -355,6 +364,7 @@ def run_stop_loss_check(ctx: dict) -> None:
                     f"손절 매도: {label} | 매입가: {avg_price:,.0f} | "
                     f"현재가: {current_price:,.0f} | 수익률: {profit_pct:.2f}%"
                 )
+        _save_holdings_snapshot(config.mode, snapshot)
 
     except Exception as e:
         logger.error(f"손절 체크 오류: {e}", exc_info=True)

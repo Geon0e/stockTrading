@@ -411,7 +411,7 @@ code { color: #60a5fa; font-size: 11px; }
       <table>
         <thead>
           <tr>
-            <th>종목</th><th>수량</th><th>평균단가</th>
+            <th>종목</th><th>수량</th><th>평균단가</th><th>현재가</th><th>수익률</th>
           </tr>
         </thead>
         <tbody id="pfBody"></tbody>
@@ -693,7 +693,7 @@ function loadPortfolio() {
     tb.innerHTML = '';
     if (!items.length) {
       const tr = document.createElement('tr');
-      tr.innerHTML = '<td colspan="3" style="color:#444;text-align:center;padding:20px">보유 종목 없음</td>';
+      tr.innerHTML = '<td colspan="5" style="color:#444;text-align:center;padding:20px">보유 종목 없음</td>';
       tb.appendChild(tr);
       return;
     }
@@ -702,12 +702,20 @@ function loadPortfolio() {
         ? `<span style="font-size:13px;color:#e0e0e0;font-weight:bold">${h.name}</span><br><span style="color:#444;font-size:10px">${h.code}</span>`
         : `<span style="font-size:13px;color:#60a5fa;font-weight:bold">${h.code}</span>`;
       const isOverseas = /^[A-Z]{1,5}$/.test(h.code);
-      const priceStr = isOverseas ? '$' + h.avg_price.toFixed(2) : h.avg_price.toLocaleString('ko-KR') + '원';
+      const fmt = n => isOverseas ? '$' + n.toFixed(2) : n.toLocaleString('ko-KR') + '원';
+      const avgStr = fmt(h.avg_price);
+      const curStr = h.current_price != null ? fmt(h.current_price) : '—';
+      const pct = h.profit_pct;
+      const pctStr = pct != null
+        ? `<span style="color:${pct >= 0 ? '#22c55e' : '#ef4444'};font-weight:bold">${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</span>`
+        : '—';
       const tr = document.createElement('tr');
       tr.innerHTML =
         `<td>${nameMain}</td>` +
         `<td style="color:#60a5fa;font-weight:bold">${h.qty}주</td>` +
-        `<td style="color:#aaa">${priceStr}</td>`;
+        `<td style="color:#aaa">${avgStr}</td>` +
+        `<td style="color:#aaa">${curStr}</td>` +
+        `<td>${pctStr}</td>`;
       tb.appendChild(tr);
     });
   }).catch(() => {});
