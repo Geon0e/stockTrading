@@ -188,28 +188,37 @@ def _run_domestic_cycle(ctx: dict, token: str) -> int:
                     logger.info(f"매수 취소 (사용자 거절 또는 타임아웃): {label}")
                     continue
 
-            # 2단계: 매수 주문
-            result    = ctx["order_client"].buy(code, config.order_quantity, token)
+            # 2단계: mock_budget 기반 수량 계산
+            per_position = config.mock_budget // config.max_positions
+            quantity = per_position // int(price) if int(price) > 0 else 0
+            if quantity < 1:
+                name = get_stock_name(code)
+                label = f"{code}({name})" if name else code
+                logger.debug(f"예산 초과 스킵: {label} | {price:,.0f}원 > 포지션예산 {per_position:,}원")
+                continue
+
+            # 3단계: 매수 주문
+            result    = ctx["order_client"].buy(code, quantity, token)
             order_no  = result.get("output", {}).get("ODNO", "")
             if _tg(ctx):
-                tg_notify_order_placed(_tg(ctx), code, config.order_quantity, price, order_no)
+                tg_notify_order_placed(_tg(ctx), code, quantity, price, order_no)
 
-            # 3단계: 체결 확인 후 알림 + 저장
+            # 4단계: 체결 확인 후 알림 + 저장
             exec_info = ctx["order_client"].get_execution(code, order_no, token)
             exec_price = exec_info["exec_price"] if exec_info else str(price)
             exec_time  = exec_info["exec_time"]  if exec_info else ""
             if _tg(ctx):
-                tg_notify_buy(_tg(ctx), code, config.order_quantity, price,
+                tg_notify_buy(_tg(ctx), code, quantity, price,
                               signal_type=signal_type, signal_time=signal_time,
                               exec_price=exec_price)
             ctx["trade_logger"].log(
-                "BUY", code, config.order_quantity, result,
+                "BUY", code, quantity, result,
                 signal_type=signal_type,
                 signal_detected_at=signal_time,
                 exec_price=exec_price,
                 exec_confirmed_at=exec_time,
             )
-            holdings[code] = {"qty": config.order_quantity, "avg_price": exec_price}
+            holdings[code] = {"qty": quantity, "avg_price": exec_price}
             bought += 1
         if not candidates:
             logger.info(f"국내 골든크로스 종목 없음 | 보유: {len(holdings)}개")
@@ -283,24 +292,33 @@ def _run_nasdaq_cycle(ctx: dict, token: str) -> int:
                     logger.info(f"매수 취소 (사용자 거절 또는 타임아웃): {label}")
                     continue
 
-            # 2단계: 매수 주문
-            result   = ctx["order_client"].buy_overseas(symbol, exchange, config.order_quantity, token)
+            # 2단계: USD 예산 기반 수량 계산
+            per_position_usd = config.real_usd_budget / config.max_positions
+            quantity = int(per_position_usd // price) if price > 0 else 0
+            if quantity < 1:
+                name = get_stock_name(symbol)
+                label = f"{symbol}({name})" if name else symbol
+                logger.debug(f"예산 초과 스킵: {label} | ${price:.2f} > 포지션예산 ${per_position_usd:.2f}")
+                continue
+
+            # 3단계: 매수 주문
+            result   = ctx["order_client"].buy_overseas(symbol, exchange, quantity, token)
             order_no = result.get("output", {}).get("ODNO", "")
             if _tg(ctx):
-                tg_notify_order_placed(_tg(ctx), symbol, config.order_quantity, price, order_no, market="US")
+                tg_notify_order_placed(_tg(ctx), symbol, quantity, price, order_no, market="US")
 
-            # 3단계: 체결 알림 + 저장 (해외는 체결조회 미지원, 주문가로 대체)
+            # 4단계: 체결 알림 + 저장 (해외는 체결조회 미지원, 주문가로 대체)
             if _tg(ctx):
-                tg_notify_buy(_tg(ctx), symbol, config.order_quantity, price,
+                tg_notify_buy(_tg(ctx), symbol, quantity, price,
                               signal_type=signal_type, signal_time=signal_time,
                               exec_price=str(price), market="US")
             ctx["trade_logger"].log(
-                "BUY", symbol, config.order_quantity, result,
+                "BUY", symbol, quantity, result,
                 signal_type=signal_type,
                 signal_detected_at=signal_time,
                 exec_price=str(price),
             )
-            holdings[symbol] = {"qty": config.order_quantity, "exchange": exchange, "avg_price": str(price)}
+            holdings[symbol] = {"qty": quantity, "exchange": exchange, "avg_price": str(price)}
             bought += 1
         if not candidates:
             logger.info(f"나스닥 골든크로스 종목 없음 | 보유: {len(holdings)}개")

@@ -973,7 +973,10 @@ function saveBudget() {
   const mp = parseInt(document.getElementById('cfgMaxPositions').value) || 0;
   const oq = parseInt(document.getElementById('cfgOrderQty').value) || 0;
   const wl = document.getElementById('cfgWatchlist').value.trim();
-  const payload = { mock_budget: mb, real_budget: rb, real_usd_budget: ru, watchlist: wl };
+  const payload = { watchlist: wl };
+  if (mb > 0) payload.mock_budget = mb;
+  if (rb > 0) payload.real_budget = rb;
+  if (ru > 0) payload.real_usd_budget = ru;
   if (mp > 0) payload.max_positions = mp;
   if (oq > 0) payload.order_quantity = oq;
   fetch('/api/config', {
