@@ -16,7 +16,7 @@ from screener.stock_screener import StockScreener
 from audit.trade_logger import TradeLogger
 from trader.real_domestic import run_real_domestic_cycle
 from trader.real_nasdaq import run_real_nasdaq_cycle
-from trader.utils import traded_today as _traded_today
+from trader.utils import traded_today as _traded_today, get_daily_budget, deduct_daily_budget, add_daily_budget
 from notifications.telegram_notifier import (
     from_env as telegram_from_env,
     notify_signal as tg_notify_signal,
@@ -127,8 +127,10 @@ def run_take_profit_cycle(ctx: dict) -> None:
                 ctx["trade_logger"].log("SELL", code, qty, result, signal_type="익절",
                                         exec_price=str(limit_price), profit_rate=actual_profit_pct)
                 _traded_today(ctx).add(code)
+                proceeds = limit_price * qty
+                add_daily_budget(ctx, proceeds)
                 _notify_take_profit_sell(ctx, code, qty, actual_profit_pct)
-                logger.info(f"익절 매도: {code} | 매입가 {avg_price:,.0f}원 | 지정가 {limit_price:,}원 | 수익률 {actual_profit_pct:+.2f}%")
+                logger.info(f"익절 매도: {code} | 매입가 {avg_price:,.0f}원 | 지정가 {limit_price:,}원 | 수익률 {actual_profit_pct:+.2f}% | 당일 잔여예산: {get_daily_budget(ctx):,}원")
 
     except Exception as e:
         logger.error(f"익절 사이클 오류: {e}", exc_info=True)
@@ -179,9 +181,13 @@ def _run_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> int:
 
     bought = 0
     capacity = config.max_positions - len(holdings)
-    per_position = config.mock_budget // config.max_positions
     if skip_buy:
         return 0
+    remaining = get_daily_budget(ctx)
+    if remaining <= 0:
+        logger.info("당일 예산 소진 — 매수 건너뜀")
+        return 0
+    per_position = min(config.mock_budget // config.max_positions, remaining)
     if capacity > 0:
         candidates = ctx["screener"].scan(token, all_stocks=config.scan_all_stocks)
         if candidates:
@@ -237,6 +243,9 @@ def _run_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> int:
             )
             holdings[code] = {"qty": quantity, "avg_price": exec_price}
             _traded_today(ctx).add(code)
+            cost = int(float(exec_price) * quantity)
+            deduct_daily_budget(ctx, cost)
+            logger.info(f"당일 잔여예산: {get_daily_budget(ctx):,}원")
             bought += 1
         if not candidates:
             logger.info(f"국내 골든크로스 종목 없음 | 보유: {len(holdings)}개")
@@ -477,8 +486,9 @@ def main() -> None:
 
     logger.info(f"텔레그램 알림: {'활성화' if telegram_bot else '비활성화 (mock)'}")
 
-    order_lock = threading.Lock()  # 동시 주문 충돌 방지
-    stop_event = threading.Event()
+    order_lock  = threading.Lock()  # 동시 주문 충돌 방지
+    budget_lock = threading.Lock()  # 당일 예산 동시 접근 방지
+    stop_event  = threading.Event()
 
     ctx = {
         "config":              config,
@@ -491,6 +501,7 @@ def main() -> None:
         "telegram_bot":        telegram_bot,
         "domestic_buy_date":   None,
         "order_lock":          order_lock,
+        "budget_lock":         budget_lock,
     }
 
     interval = config.scan_interval_minutes

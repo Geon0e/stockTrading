@@ -2,7 +2,7 @@ import logging
 import datetime
 
 from screener.name_lookup import get_stock_name
-from trader.utils import traded_today as _traded_today
+from trader.utils import traded_today as _traded_today, get_daily_budget, deduct_daily_budget, add_daily_budget
 from notifications.telegram_notifier import (
     notify_signal as tg_notify_signal,
     notify_order_placed as tg_notify_order_placed,
@@ -27,10 +27,9 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
     - 현재가 > 포지션당 예산인 종목은 스킵
     """
     config = ctx["config"]
-    per_position = config.real_budget // config.max_positions
     logger.info(
         f"[실전] 국내 매매 시작 | 총예산: {config.real_budget:,}원 | "
-        f"포지션({config.max_positions}개)당: {per_position:,}원"
+        f"당일 잔여: {get_daily_budget(ctx):,}원"
     )
 
     holdings = ctx["order_client"].get_holdings(token)
@@ -98,10 +97,15 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
     if skip_buy:
         logger.info("[실전] 오늘 이미 매수 완료 — 매수 건너뜀")
         return 0
+    remaining = get_daily_budget(ctx)
+    if remaining <= 0:
+        logger.info("[실전] 당일 예산 소진 — 매수 건너뜀")
+        return 0
     capacity = config.max_positions - len(holdings)
     if capacity <= 0:
         logger.info(f"[실전] 최대 포지션 도달 ({config.max_positions}개) — 매수 건너뜀")
         return 0
+    per_position = min(config.real_budget // config.max_positions, remaining)
 
     candidates = ctx["screener"].scan(token, all_stocks=config.scan_all_stocks)
     if candidates and _tg(ctx):
@@ -129,8 +133,9 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
             )
             continue
 
-        # 수량 자동 계산: 포지션 예산을 주가로 나눔
-        quantity = per_position // price
+        # 수량 자동 계산: 포지션 예산을 주가로 나눔 (당일 잔여예산 재확인)
+        available = min(per_position, get_daily_budget(ctx))
+        quantity = available // price
         if config.order_quantity > 0:
             quantity = min(quantity, config.order_quantity)
         if quantity < 1:
@@ -178,8 +183,10 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
         )
         holdings[code] = {"qty": quantity, "avg_price": exec_price}
         _traded_today(ctx).add(code)
+        cost = int(float(exec_price) * quantity)
+        deduct_daily_budget(ctx, cost)
         bought += 1
-        logger.info(f"[실전] 매수 완료: {label} | {quantity}주 @ {exec_price}원")
+        logger.info(f"[실전] 매수 완료: {label} | {quantity}주 @ {exec_price}원 | 당일 잔여예산: {get_daily_budget(ctx):,}원")
 
     if skipped_budget:
         logger.info(f"[실전] 예산 초과로 스킵된 종목: {skipped_budget}개 (포지션당 {per_position:,}원 초과)")
