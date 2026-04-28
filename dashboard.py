@@ -559,6 +559,26 @@ def api_portfolio():
     return jsonify(result)
 
 
+@app.route("/api/daily-status")
+def api_daily_status():
+    mode = _valid_mode(request.args.get("mode", "mock"))
+    path = _BASE / f"logs/daily_status_{mode}.json"
+    if not path.exists():
+        env = _read_env()
+        m = mode.upper()
+        budget = int(env.get("MOCK_BUDGET", "500000")) if mode == "mock" else int(env.get("REAL_BUDGET", "500000"))
+        return jsonify({
+            "date": "", "mode": mode,
+            "budget_total": budget, "budget_remaining": budget,
+            "buy_count": 0, "buy_amount": 0,
+            "take_profit_count": 0, "take_profit_amount": 0,
+        })
+    try:
+        return jsonify(json.loads(path.read_text(encoding="utf-8")))
+    except Exception:
+        return jsonify({}), 500
+
+
 @app.route("/api/trades/summary")
 def api_trades_summary():
     mode = _valid_mode(request.args.get("mode", "mock"))

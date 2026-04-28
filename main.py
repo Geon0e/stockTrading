@@ -128,7 +128,7 @@ def run_take_profit_cycle(ctx: dict) -> None:
                                         exec_price=str(limit_price), profit_rate=actual_profit_pct)
                 _traded_today(ctx).add(code)
                 proceeds = limit_price * qty
-                add_daily_budget(ctx, proceeds)
+                add_daily_budget(ctx, proceeds, is_take_profit=True)
                 _notify_take_profit_sell(ctx, code, qty, actual_profit_pct)
                 logger.info(f"익절 매도: {code} | 매입가 {avg_price:,.0f}원 | 지정가 {limit_price:,}원 | 수익률 {actual_profit_pct:+.2f}% | 당일 잔여예산: {get_daily_budget(ctx):,}원")
 
