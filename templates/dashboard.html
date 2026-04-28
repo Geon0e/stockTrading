@@ -561,8 +561,8 @@ code { color: #60a5fa; font-size: 11px; }
           </div>
           <div class="cfg-row" style="margin-top:6px">
             <span style="font-size:11px;color:#888;width:72px">모니터링 주기</span>
-            <input type="number" id="cfgMonitorInterval" class="cfg-input" style="width:70px" min="1" placeholder="1">
-            <span class="cfg-hint">분마다 체크 (기본 1분)</span>
+            <input type="number" id="cfgMonitorInterval" class="cfg-input" style="width:70px" min="1" placeholder="60">
+            <span class="cfg-hint">초마다 체크 (기본 60초)</span>
           </div>
         </div>
 
@@ -1023,7 +1023,7 @@ function saveAndRestart() {
     scan_nasdaq:      document.getElementById('cfgScanNasdaq').checked,
     take_profit_rate:        parseFloat(document.getElementById('cfgTakeProfit').value) || 0,
     stop_loss_pct:           parseFloat(document.getElementById('cfgStopLoss').value) || 0,
-    monitor_interval_minutes: parseInt(document.getElementById('cfgMonitorInterval').value) || 1,
+    monitor_interval_seconds: parseInt(document.getElementById('cfgMonitorInterval').value) || 60,
     order_type:       document.querySelector('input[name="cfgOrderType"]:checked')?.value || 'market',
     limit_order_pct:  parseFloat(document.getElementById('cfgLimitPct').value) || 1.0,
   };
@@ -1111,7 +1111,7 @@ function loadSettings() {
     document.getElementById('cfgScanNasdaq').checked = !!d.scan_nasdaq;
     document.getElementById('cfgTakeProfit').value = d.take_profit_rate ?? '';
     document.getElementById('cfgStopLoss').value = d.stop_loss_pct ?? '';
-    document.getElementById('cfgMonitorInterval').value = d.monitor_interval_minutes ?? 1;
+    document.getElementById('cfgMonitorInterval').value = d.monitor_interval_seconds ?? 60;
     const isLimit = d.order_type === 'limit';
     document.getElementById('cfgOrderTypeMarket').checked = !isLimit;
     document.getElementById('cfgOrderTypeLimit').checked = isLimit;

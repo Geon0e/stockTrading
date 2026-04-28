@@ -475,13 +475,13 @@ def main() -> None:
         if config.scan_nasdaq:
             schedule.every().day.at("23:35").do(run_nasdaq_cycle, ctx)
         logger.info("스캔 주기: 국내 09:05 / 나스닥 23:35 고정")
-    monitor_interval = config.monitor_interval_minutes
+    monitor_interval = config.monitor_interval_seconds
     if config.stop_loss_pct > 0:
-        schedule.every(monitor_interval).minutes.do(run_stop_loss_check, ctx)
-        logger.info(f"손절 모니터링 활성화: -{config.stop_loss_pct}% | {monitor_interval}분 주기 체크")
+        schedule.every(monitor_interval).seconds.do(run_stop_loss_check, ctx)
+        logger.info(f"손절 모니터링 활성화: -{config.stop_loss_pct}% | {monitor_interval}초 주기 체크")
     if config.take_profit_rate > 0:
-        schedule.every(monitor_interval).minutes.do(run_take_profit_cycle, ctx)
-        logger.info(f"익절 모니터링 활성화: +{config.take_profit_rate}% | {monitor_interval}분 주기 체크")
+        schedule.every(monitor_interval).seconds.do(run_take_profit_cycle, ctx)
+        logger.info(f"익절 모니터링 활성화: +{config.take_profit_rate}% | {monitor_interval}초 주기 체크")
 
     while True:
         schedule.run_pending()

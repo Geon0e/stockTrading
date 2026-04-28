@@ -297,7 +297,7 @@ def api_get_config():
         "scan_nasdaq": env.get(f"SCAN_NASDAQ_{m}", env.get("SCAN_NASDAQ", "false")).lower() == "true",
         "take_profit_rate": float(env.get(f"TAKE_PROFIT_RATE_{m}", env.get("TAKE_PROFIT_RATE", "0"))),
         "stop_loss_pct": float(env.get(f"STOP_LOSS_PCT_{m}", env.get("STOP_LOSS_PCT", "0"))),
-        "monitor_interval_minutes": int(env.get(f"MONITOR_INTERVAL_MINUTES_{m}", env.get("MONITOR_INTERVAL_MINUTES", "1"))),
+        "monitor_interval_seconds": int(env.get(f"MONITOR_INTERVAL_SECONDS_{m}", env.get("MONITOR_INTERVAL_SECONDS", "60"))),
         "order_type": env.get(f"ORDER_TYPE_{m}", "market"),
         "limit_order_pct": float(env.get(f"LIMIT_ORDER_PCT_{m}", "1.0")),
     }
@@ -354,11 +354,11 @@ def api_set_config():
         _write_env_key(f"EXCLUDE_LIST_{mode.upper()}", cleaned)
         changes["exclude_list"] = cleaned
 
-    if "monitor_interval_minutes" in data:
-        val = int(data["monitor_interval_minutes"])
+    if "monitor_interval_seconds" in data:
+        val = int(data["monitor_interval_seconds"])
         if val >= 1:
-            _write_env_key(f"MONITOR_INTERVAL_MINUTES_{mode.upper()}", str(val))
-            changes["monitor_interval_minutes"] = val
+            _write_env_key(f"MONITOR_INTERVAL_SECONDS_{mode.upper()}", str(val))
+            changes["monitor_interval_seconds"] = val
 
     if changes:
         _append_settings_history(mode, changes)
@@ -433,11 +433,11 @@ def api_save_restart():
         _write_env_key(f"STOP_LOSS_PCT_{mode.upper()}", str(val))
         changes["손절"] = f"-{val}%" if val > 0 else "비활성화"
 
-    if "monitor_interval_minutes" in cfg:
-        val = int(cfg["monitor_interval_minutes"])
+    if "monitor_interval_seconds" in cfg:
+        val = int(cfg["monitor_interval_seconds"])
         if val >= 1:
-            _write_env_key(f"MONITOR_INTERVAL_MINUTES_{mode.upper()}", str(val))
-            changes["모니터링 주기"] = f"{val}분"
+            _write_env_key(f"MONITOR_INTERVAL_SECONDS_{mode.upper()}", str(val))
+            changes["모니터링 주기"] = f"{val}초"
 
     if "order_type" in cfg:
         val = cfg["order_type"] if cfg["order_type"] in ("market", "limit") else "market"
