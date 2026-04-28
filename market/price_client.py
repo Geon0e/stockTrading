@@ -45,6 +45,46 @@ class PriceClient:
         prices.reverse()
         return prices
 
+    def fetch_ohlcv(self, stock_code: str, count: int, token: str) -> List[dict]:
+        """일별 OHLCV를 오래된 순으로 반환. keys: open, high, low, close, volume"""
+        params = {
+            "FID_COND_MRKT_DIV_CODE": "J",
+            "FID_INPUT_ISCD": stock_code,
+            "FID_PERIOD_DIV_CODE": "D",
+            "FID_ORG_ADJ_PRC": "0",
+        }
+        url = f"{self._config.base_url}{_ENDPOINT}"
+        resp = requests.get(url, headers=self._headers(token), params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        if data.get("rt_cd") != "0":
+            raise RuntimeError(f"OHLCV 조회 실패 [{stock_code}]: {data.get('msg1')}")
+
+        rows = data.get("output", [])
+        result = []
+        for row in rows:
+            try:
+                c = int(row.get("stck_clpr") or 0)
+                if c <= 0:
+                    continue
+                result.append({
+                    "open":   int(row.get("stck_oprc") or 0),
+                    "high":   int(row.get("stck_hgpr") or 0),
+                    "low":    int(row.get("stck_lwpr") or 0),
+                    "close":  c,
+                    "volume": int(row.get("acml_vol") or 0),
+                })
+            except (ValueError, TypeError):
+                pass
+
+        if len(result) < count:
+            raise RuntimeError(f"OHLCV 데이터 부족: {count}개 필요, {len(result)}개 조회됨")
+
+        result = result[:count]
+        result.reverse()  # 최신순 → 오래된 순
+        return result
+
     def fetch_current_price(self, stock_code: str, token: str) -> Decimal:
         """국내주식 실시간 현재가 조회"""
         params = {

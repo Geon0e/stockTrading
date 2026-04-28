@@ -15,6 +15,7 @@ from strategy.strategy_loader import load_strategy_config
 from screener.stock_screener import StockScreener
 from audit.trade_logger import TradeLogger
 from trader.real_domestic import run_real_domestic_cycle
+from trader.matagi import check_matagi_conditions
 from trader.real_nasdaq import run_real_nasdaq_cycle
 from trader.utils import traded_today as _traded_today, get_daily_budget, deduct_daily_budget, add_daily_budget, init_daily_from_api
 from notifications.telegram_notifier import (
@@ -217,7 +218,18 @@ def _run_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> int:
                 if avg_p <= 0 or price >= avg_p:
                     logger.debug(f"보유 중 수익 종목 추가매수 스킵: {code} | 매입가: {avg_p:,.0f}원 | 현재가: {price:,}원")
                     continue
+                # 물타기 추가 조건 확인
+                ok, reason = check_matagi_conditions(
+                    ctx["price_client"], code, token, avg_p, price,
+                    drop_pct=config.matagi_drop_pct,
+                )
+                _name = get_stock_name(code)
+                _label = f"{code}({_name})" if _name else code
+                if not ok:
+                    logger.info(f"물타기 스킵 [{_label}]: {reason}")
+                    continue
                 signal_type = "물타기"
+                logger.info(f"물타기 조건 통과 [{_label}]: {reason}")
 
             # 1단계: 신호 감지 알림
             if _tg(ctx):
