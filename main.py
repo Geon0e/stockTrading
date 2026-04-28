@@ -207,7 +207,7 @@ def _run_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> int:
                 if avg_p <= 0 or price >= avg_p:
                     logger.debug(f"보유 중 수익 종목 추가매수 스킵: {code} | 매입가: {avg_p:,.0f}원 | 현재가: {price:,}원")
                     continue
-                # 현재가 < 매입가(손실 중) → 물타기 허용
+                signal_type = "물타기"
 
             # 1단계: 신호 감지 알림
             if _tg(ctx):

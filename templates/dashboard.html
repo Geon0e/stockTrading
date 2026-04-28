@@ -268,6 +268,7 @@ td { padding: 6px 9px; color: #bbb; vertical-align: middle; }
 .sg-sl  { background: #2d1414; color: #f87171; }
 .sg-tp  { background: #14213d; color: #60a5fa; }
 .sg-dc  { background: #2d2414; color: #fbbf24; }
+.sg-mt  { background: #2a1f0e; color: #fb923c; }
 .sg-def { background: #1e1e1e; color: #888; }
 code { color: #60a5fa; font-size: 11px; }
 
@@ -954,6 +955,7 @@ function sigClass(s) {
   if (s.includes('손절')) return 'sg-sl';
   if (s.includes('익절')) return 'sg-tp';
   if (s.includes('데드')) return 'sg-dc';
+  if (s.includes('물타기')) return 'sg-mt';
   return 'sg-def';
 }
 function loadTrades() {
