@@ -16,6 +16,7 @@ from screener.stock_screener import StockScreener
 from audit.trade_logger import TradeLogger
 from trader.real_domestic import run_real_domestic_cycle
 from trader.real_nasdaq import run_real_nasdaq_cycle
+from trader.utils import traded_today as _traded_today
 from notifications.telegram_notifier import (
     from_env as telegram_from_env,
     notify_signal as tg_notify_signal,
@@ -58,6 +59,7 @@ from contextlib import contextmanager
 @contextmanager
 def _null_ctx():
     yield
+
 
 
 def is_market_open() -> bool:
@@ -124,6 +126,7 @@ def run_take_profit_cycle(ctx: dict) -> None:
                 actual_profit_pct = round((limit_price - avg_price) / avg_price * 100, 2)
                 ctx["trade_logger"].log("SELL", code, qty, result, signal_type="익절",
                                         exec_price=str(limit_price), profit_rate=actual_profit_pct)
+                _traded_today(ctx).add(code)
                 _notify_take_profit_sell(ctx, code, qty, actual_profit_pct)
                 logger.info(f"익절 매도: {code} | 매입가 {avg_price:,.0f}원 | 지정가 {limit_price:,}원 | 수익률 {actual_profit_pct:+.2f}%")
 
@@ -190,7 +193,7 @@ def _run_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> int:
             signal_type   = candidate.get("signal_type", "골든크로스")
             signal_time   = candidate.get("signal_detected_at", datetime.datetime.now().isoformat())
             price         = int(candidate["price"])
-            if code in holdings:
+            if code in holdings or code in _traded_today(ctx):
                 continue
 
             # 1단계: 신호 감지 알림
@@ -233,6 +236,7 @@ def _run_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> int:
                 exec_confirmed_at=exec_time,
             )
             holdings[code] = {"qty": quantity, "avg_price": exec_price}
+            _traded_today(ctx).add(code)
             bought += 1
         if not candidates:
             logger.info(f"국내 골든크로스 종목 없음 | 보유: {len(holdings)}개")
@@ -394,6 +398,7 @@ def run_stop_loss_check(ctx: dict) -> None:
                 actual_profit_pct = round((limit_price - avg_price) / avg_price * 100, 2)
                 ctx["trade_logger"].log("SELL", stock_code, qty, result, signal_type="손절",
                                         exec_price=str(limit_price), profit_rate=actual_profit_pct)
+                _traded_today(ctx).add(stock_code)
                 _notify_sell(ctx, stock_code, qty, current_price, signal_type="손절")
                 logger.info(
                     f"손절 매도: {label} | 매입가: {avg_price:,.0f}원 | "

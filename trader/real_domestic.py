@@ -2,6 +2,7 @@ import logging
 import datetime
 
 from screener.name_lookup import get_stock_name
+from trader.utils import traded_today as _traded_today
 from notifications.telegram_notifier import (
     notify_signal as tg_notify_signal,
     notify_order_placed as tg_notify_order_placed,
@@ -65,6 +66,7 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
                 actual_profit_pct = round((limit_price - avg_price) / avg_price * 100, 2)
                 ctx["trade_logger"].log("SELL", stock_code, qty, result, signal_type="손절",
                                         exec_price=str(limit_price), profit_rate=actual_profit_pct)
+                _traded_today(ctx).add(stock_code)
                 del holdings[stock_code]
                 if _tg(ctx):
                     tg_notify_sell(_tg(ctx), stock_code, qty, current_price, signal_type="손절")
@@ -115,7 +117,8 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
         signal_time = candidate.get("signal_detected_at", datetime.datetime.now().isoformat())
         price = int(candidate["price"])
 
-        if code in holdings:
+        if code in holdings or code in _traded_today(ctx):
+            logger.debug(f"[실전] 당일 거래 종목 스킵: {code}")
             continue
 
         # 예산 초과 종목 스킵
@@ -174,6 +177,7 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
             exec_confirmed_at=exec_time,
         )
         holdings[code] = {"qty": quantity, "avg_price": exec_price}
+        _traded_today(ctx).add(code)
         bought += 1
         logger.info(f"[실전] 매수 완료: {label} | {quantity}주 @ {exec_price}원")
 
