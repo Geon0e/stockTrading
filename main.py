@@ -1,5 +1,7 @@
 import logging
 import datetime
+import signal
+import threading
 import schedule
 import time
 from config import load_config
@@ -51,6 +53,12 @@ logger = logging.getLogger(__name__)
 
 KST = datetime.timezone(datetime.timedelta(hours=9))
 
+from contextlib import contextmanager
+
+@contextmanager
+def _null_ctx():
+    yield
+
 
 def is_market_open() -> bool:
     """한국 장 (KST 09:00~15:30, 평일)"""
@@ -99,6 +107,7 @@ def run_take_profit_cycle(ctx: dict) -> None:
         return
 
     config = ctx["config"]
+    lock = ctx.get("order_lock")
     try:
         token = ctx["token_manager"].get_valid_token()
         holdings_detail = ctx["order_client"].get_holdings_detail(token)
@@ -109,7 +118,8 @@ def run_take_profit_cycle(ctx: dict) -> None:
                 qty = detail["qty"]
                 avg_price = detail["avg_price"]
                 limit_price = OrderClient._round_to_tick(int(avg_price * (1 + config.take_profit_rate / 100)))
-                result = ctx["order_client"].sell(code, qty, token, limit_price=limit_price)
+                with lock if lock else _null_ctx():
+                    result = ctx["order_client"].sell(code, qty, token, limit_price=limit_price)
                 ctx["trade_logger"].log("SELL", code, qty, result, signal_type="익절", profit_rate=profit_rate)
                 _notify_take_profit_sell(ctx, code, qty, profit_rate)
                 logger.info(f"익절 매도: {code} | 수익률 {profit_rate}% | 지정가 {limit_price:,}원")
@@ -372,7 +382,9 @@ def run_stop_loss_check(ctx: dict) -> None:
                 name  = get_stock_name(stock_code)
                 label = f"{stock_code}({name})" if name else stock_code
                 limit_price = OrderClient._round_to_tick(int(avg_price * (1 - config.stop_loss_pct / 100)))
-                result = ctx["order_client"].sell(stock_code, qty, token, limit_price=limit_price)
+                lock = ctx.get("order_lock")
+                with lock if lock else _null_ctx():
+                    result = ctx["order_client"].sell(stock_code, qty, token, limit_price=limit_price)
                 ctx["trade_logger"].log("SELL", stock_code, qty, result, signal_type="손절")
                 _notify_sell(ctx, stock_code, qty, current_price, signal_type="손절")
                 logger.info(
@@ -452,6 +464,9 @@ def main() -> None:
 
     logger.info(f"텔레그램 알림: {'활성화' if telegram_bot else '비활성화 (mock)'}")
 
+    order_lock = threading.Lock()  # 동시 주문 충돌 방지
+    stop_event = threading.Event()
+
     ctx = {
         "config":              config,
         "token_manager":       TokenManager(config),
@@ -461,7 +476,8 @@ def main() -> None:
         "screener":            StockScreener(config, price_client, strategy),
         "trade_logger":        TradeLogger(config.mode),
         "telegram_bot":        telegram_bot,
-        "domestic_buy_date":   None,  # 당일 매수 완료 날짜 (중복 매수 방지)
+        "domestic_buy_date":   None,
+        "order_lock":          order_lock,
     }
 
     interval = config.scan_interval_minutes
@@ -475,15 +491,38 @@ def main() -> None:
         if config.scan_nasdaq:
             schedule.every().day.at("23:35").do(run_nasdaq_cycle, ctx)
         logger.info("스캔 주기: 국내 09:05 / 나스닥 23:35 고정")
-    monitor_interval = config.monitor_interval_seconds
-    if config.stop_loss_pct > 0:
-        schedule.every(monitor_interval).seconds.do(run_stop_loss_check, ctx)
-        logger.info(f"손절 모니터링 활성화: -{config.stop_loss_pct}% | {monitor_interval}초 주기 체크")
-    if config.take_profit_rate > 0:
-        schedule.every(monitor_interval).seconds.do(run_take_profit_cycle, ctx)
-        logger.info(f"익절 모니터링 활성화: +{config.take_profit_rate}% | {monitor_interval}초 주기 체크")
 
-    while True:
+    monitor_interval = config.monitor_interval_seconds
+
+    def _start_monitor(name: str, fn, interval: int) -> threading.Thread:
+        def _loop():
+            logger.info(f"[{name}] 모니터링 스레드 시작 | {interval}초 주기")
+            while not stop_event.is_set():
+                try:
+                    fn(ctx)
+                except Exception as e:
+                    logger.error(f"[{name}] 모니터링 오류: {e}", exc_info=True)
+                stop_event.wait(interval)
+            logger.info(f"[{name}] 모니터링 스레드 종료")
+        t = threading.Thread(target=_loop, name=name, daemon=True)
+        t.start()
+        return t
+
+    if config.stop_loss_pct > 0:
+        _start_monitor("손절", run_stop_loss_check, monitor_interval)
+        logger.info(f"손절 모니터링 활성화: -{config.stop_loss_pct}% | {monitor_interval}초 전용 스레드")
+    if config.take_profit_rate > 0:
+        _start_monitor("익절", run_take_profit_cycle, monitor_interval)
+        logger.info(f"익절 모니터링 활성화: +{config.take_profit_rate}% | {monitor_interval}초 전용 스레드")
+
+    def _on_signal(signum, frame):
+        logger.info("종료 신호 수신 — 모니터링 스레드 정리 중...")
+        stop_event.set()
+
+    signal.signal(signal.SIGTERM, _on_signal)
+    signal.signal(signal.SIGINT,  _on_signal)
+
+    while not stop_event.is_set():
         schedule.run_pending()
         time.sleep(1)
 
