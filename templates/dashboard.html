@@ -809,10 +809,15 @@ function applyRole(role) {
       badge.style.cssText += ';background:#0f2a14;color:#4ade80;border:1px solid #22c55e44;';
     }
   }
-  const ctrlIds = ['btnStartMock','btnStopMock','btnStartReal','btnStopReal','btnDeploy','btnSaveRestart'];
-  ctrlIds.forEach(id => {
+  // 봇 시작/정지: 게스트는 비활성화
+  ['btnStartMock','btnStopMock','btnStartReal','btnStopReal'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.disabled = isGuest; if (isGuest) el.title = '게스트는 제어할 수 없습니다'; }
+  });
+  // 배포/저장 버튼: 게스트는 숨김
+  ['btnDeploy','btnSaveRestart'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isGuest ? 'none' : '';
   });
   if (isGuest) {
     document.querySelectorAll('.cfg-input, .cfg-select, .cfg-toggle input, textarea').forEach(el => el.disabled = true);
