@@ -375,6 +375,112 @@ def _save_holdings_snapshot(mode: str, items: list) -> None:
     path.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
 
 
+def _get_today_buys(mode: str) -> set:
+    """오늘 매수된 종목 코드 셋 반환 (트레이드 로그 기반)."""
+    today = str(datetime.date.today())
+    bought: set = set()
+    path = Path(_LOG_DIR) / f"trades_{mode}.jsonl"
+    if not path.exists():
+        return bought
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            r = json.loads(line)
+            if r.get("action") == "BUY" and str(r.get("timestamp", "")).startswith(today):
+                code = r.get("stock_code")
+                if code:
+                    bought.add(code)
+        except Exception:
+            pass
+    return bought
+
+
+def run_morning_sell_cycle(ctx: dict) -> None:
+    """장 시작 시 전일 보유 종목 중 수익률 기준 초과 종목 익절 매도.
+
+    MORNING_SELL_PROFIT_PCT_{MODE} 환경변수로 기준 수익률 설정 (0 = 비활성화).
+    오늘 매수한 종목은 제외하고, 전날부터 보유 중인 종목만 대상으로 한다.
+    """
+    if not is_market_open():
+        return
+    config = ctx["config"]
+    threshold = config.morning_sell_profit_pct
+    if threshold <= 0:
+        return
+    today = datetime.date.today()
+    if ctx.get("morning_sell_date") == today:
+        return  # 당일 이미 실행됨
+    ctx["morning_sell_date"] = today
+
+    try:
+        token = ctx["token_manager"].get_valid_token()
+        today_buys = _get_today_buys(config.mode)
+        holdings_detail = ctx["order_client"].get_holdings_detail(token)
+        _exclude = set(config.exclude_list)
+        lock = ctx.get("order_lock")
+        sold = 0
+
+        for code, detail in list(holdings_detail.items()):
+            if code in _traded_today(ctx):
+                continue
+            if code in _exclude:
+                continue
+            if code in today_buys:
+                logger.debug(f"[장초 익절] 오늘 매수 종목 제외: {code}")
+                continue
+            profit_rate = float(detail["profit_rate"])
+            if profit_rate < threshold:
+                continue
+
+            qty       = detail["qty"]
+            avg_price = detail["avg_price"]
+            name      = get_stock_name(code)
+            label     = f"{code}({name})" if name else code
+            sell_price = round(avg_price * (1 + profit_rate / 100))
+            profit_amount = int(avg_price * qty * profit_rate / 100)
+
+            try:
+                if lock:
+                    lock.acquire()
+                try:
+                    result = ctx["order_client"].sell(code, qty, token)
+                finally:
+                    if lock:
+                        lock.release()
+
+                ctx["trade_logger"].log(
+                    "SELL", code, qty, result,
+                    signal_type="장초익절",
+                    profit_rate=round(profit_rate, 2),
+                    profit_amount=profit_amount,
+                )
+                _traded_today(ctx).add(code)
+                add_daily_budget(ctx, int(sell_price * qty),
+                                 is_take_profit=True,
+                                 profit_amount=profit_amount)
+                if _tg(ctx):
+                    tg_notify_sell(_tg(ctx), code, qty, sell_price,
+                                   signal_type=f"장초익절 +{profit_rate:.1f}%")
+                logger.info(
+                    f"[장초 익절] {label} | 수익률: {profit_rate:+.2f}% ≥ +{threshold}% | "
+                    f"{qty}주 | 수익: {profit_amount:+,}원"
+                )
+                sold += 1
+            except Exception as e:
+                logger.warning(f"[장초 익절] 매도 실패 [{label}]: {e}")
+                _traded_today(ctx).add(code)
+
+        if sold:
+            logger.info(f"[장초 익절] 총 {sold}종목 매도 완료")
+        else:
+            logger.info(f"[장초 익절] 기준 수익률 +{threshold}% 초과 종목 없음")
+
+    except Exception as e:
+        logger.error(f"[장초 익절] 사이클 오류: {e}", exc_info=True)
+
+
 def run_stop_loss_check(ctx: dict) -> None:
     """장중 손절 체크 — 보유 국내주식 실시간 현재가 기준으로 매분 확인"""
     if not is_market_open():
@@ -456,6 +562,10 @@ def run_domestic_cycle(ctx: dict) -> None:
     if not is_market_open():
         logger.info("국내 장 시간 외 — 건너뜀")
         return
+
+    # 장 시작 시 전일 보유 종목 익절 체크 (당일 1회)
+    run_morning_sell_cycle(ctx)
+
     today = datetime.date.today()
     skip_buy = (ctx.get("domestic_buy_date") == today)
     if skip_buy:

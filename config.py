@@ -66,6 +66,7 @@ class Config:
     order_type: str         # "market" | "limit"
     limit_order_pct: float  # 지정가 주문 시 포착 가격 대비 허용 % (예: 1.0 → 신호가 × 1.01)
     monitor_interval_seconds: int  # 손절/익절 모니터링 주기(초). 기본 60초
+    morning_sell_profit_pct: float  # 장초 전일 보유 종목 익절 기준 (%, 0 = 비활성화)
 
 
 def load_config() -> Config:
@@ -116,5 +117,6 @@ def load_config() -> Config:
         order_type=os.getenv(f"ORDER_TYPE_{mode.upper()}", "market"),
         limit_order_pct=float(os.getenv(f"LIMIT_ORDER_PCT_{mode.upper()}", "1.0")),
         monitor_interval_seconds=int(os.getenv(f"MONITOR_INTERVAL_SECONDS_{mode.upper()}", os.getenv("MONITOR_INTERVAL_SECONDS", "60"))),
+        morning_sell_profit_pct=float(os.getenv(f"MORNING_SELL_PROFIT_PCT_{mode.upper()}", os.getenv("MORNING_SELL_PROFIT_PCT", "0"))),
         **env,
     )
