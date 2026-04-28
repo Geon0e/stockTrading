@@ -15,9 +15,13 @@ def traded_today(ctx: dict) -> set:
 
 
 def _rebuild_daily_from_trades(mode: str, today: datetime.date, budget: int) -> dict:
-    """trades_{mode}.jsonl에서 당일 매수/익절 내역을 읽어 예산 현황 재계산."""
+    """trades_{mode}.jsonl에서 당일 매수/매도 내역을 읽어 예산 현황 재계산.
+
+    잔여예산 = 설정예산 - 매수합계 + 전체매도합계 (손절 포함)
+    익절 건수/금액은 별도 표시용으로만 집계.
+    """
     today_str = str(today)
-    buy_count = buy_amount = tp_count = tp_amount = 0
+    buy_count = buy_amount = sell_amount = tp_count = tp_amount = 0
     path = _LOG_DIR / f"trades_{mode}.jsonl"
     if path.exists():
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -35,14 +39,16 @@ def _rebuild_daily_from_trades(mode: str, today: datetime.date, budget: int) -> 
                 if action == "BUY":
                     buy_count += 1
                     buy_amount += amount
-                elif action == "SELL" and "익절" in str(r.get("signal_type", "")):
-                    tp_count += 1
-                    tp_amount += amount
+                elif action == "SELL":
+                    sell_amount += amount
+                    if "익절" in str(r.get("signal_type", "")):
+                        tp_count += 1
+                        tp_amount += amount
             except Exception:
                 pass
     return {
         "daily_budget_total":       budget,
-        "daily_budget_remaining":   max(0, budget - buy_amount + tp_amount),
+        "daily_budget_remaining":   max(0, budget - buy_amount + sell_amount),
         "daily_buy_count":          buy_count,
         "daily_buy_amount":         buy_amount,
         "daily_take_profit_count":  tp_count,

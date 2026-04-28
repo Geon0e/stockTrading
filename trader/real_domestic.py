@@ -67,6 +67,7 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
                                         exec_price=str(limit_price), profit_rate=actual_profit_pct)
                 _traded_today(ctx).add(stock_code)
                 del holdings[stock_code]
+                add_daily_budget(ctx, int(limit_price * qty))
                 if _tg(ctx):
                     tg_notify_sell(_tg(ctx), stock_code, qty, current_price, signal_type="손절")
                 logger.info(
@@ -88,6 +89,7 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
                 continue
             ctx["trade_logger"].log("SELL", stock_code, qty, result)
             del holdings[stock_code]
+            add_daily_budget(ctx, int(current_price * qty))
             if _tg(ctx):
                 tg_notify_sell(_tg(ctx), stock_code, qty, prices[-1])
             logger.info(f"[실전] 데드크로스 매도: {label}")
