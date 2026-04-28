@@ -121,9 +121,11 @@ def run_take_profit_cycle(ctx: dict) -> None:
                 limit_price = OrderClient._round_to_tick(int(avg_price * (1 + limit_pct / 100)))
                 with lock if lock else _null_ctx():
                     result = ctx["order_client"].sell(code, qty, token, limit_price=limit_price)
-                ctx["trade_logger"].log("SELL", code, qty, result, signal_type="익절", profit_rate=profit_rate)
-                _notify_take_profit_sell(ctx, code, qty, profit_rate)
-                logger.info(f"익절 매도: {code} | 수익률 {profit_rate}% | 지정가 {limit_price:,}원")
+                actual_profit_pct = round((limit_price - avg_price) / avg_price * 100, 2)
+                ctx["trade_logger"].log("SELL", code, qty, result, signal_type="익절",
+                                        exec_price=str(limit_price), profit_rate=actual_profit_pct)
+                _notify_take_profit_sell(ctx, code, qty, actual_profit_pct)
+                logger.info(f"익절 매도: {code} | 매입가 {avg_price:,.0f}원 | 지정가 {limit_price:,}원 | 수익률 {actual_profit_pct:+.2f}%")
 
     except Exception as e:
         logger.error(f"익절 사이클 오류: {e}", exc_info=True)
@@ -389,11 +391,13 @@ def run_stop_loss_check(ctx: dict) -> None:
                 lock = ctx.get("order_lock")
                 with lock if lock else _null_ctx():
                     result = ctx["order_client"].sell(stock_code, qty, token, limit_price=limit_price)
-                ctx["trade_logger"].log("SELL", stock_code, qty, result, signal_type="손절")
+                actual_profit_pct = round((limit_price - avg_price) / avg_price * 100, 2)
+                ctx["trade_logger"].log("SELL", stock_code, qty, result, signal_type="손절",
+                                        exec_price=str(limit_price), profit_rate=actual_profit_pct)
                 _notify_sell(ctx, stock_code, qty, current_price, signal_type="손절")
                 logger.info(
-                    f"손절 매도: {label} | 매입가: {avg_price:,.0f} | "
-                    f"현재가: {current_price:,.0f} | 수익률: {profit_pct:.2f}% | 지정가 {limit_price:,}원"
+                    f"손절 매도: {label} | 매입가: {avg_price:,.0f}원 | "
+                    f"지정가: {limit_price:,}원 | 수익률: {actual_profit_pct:+.2f}%"
                 )
         _save_holdings_snapshot(config.mode, snapshot)
 

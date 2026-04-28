@@ -54,18 +54,23 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
         if config.stop_loss_pct > 0 and avg_price > 0:
             drop_pct = (current_price - avg_price) / avg_price * 100
             if drop_pct <= -config.stop_loss_pct:
+                from order.order_client import OrderClient
+                limit_pct = config.stop_loss_limit_pct or config.stop_loss_pct
+                limit_price = OrderClient._round_to_tick(int(avg_price * (1 - limit_pct / 100)))
                 try:
-                    result = ctx["order_client"].sell(stock_code, qty, token)
+                    result = ctx["order_client"].sell(stock_code, qty, token, limit_price=limit_price)
                 except Exception as e:
                     logger.warning(f"[실전] 손절 매도 실패 [{stock_code}]: {e} — 스킵")
                     continue
-                ctx["trade_logger"].log("SELL", stock_code, qty, result, signal_type="손절")
+                actual_profit_pct = round((limit_price - avg_price) / avg_price * 100, 2)
+                ctx["trade_logger"].log("SELL", stock_code, qty, result, signal_type="손절",
+                                        exec_price=str(limit_price), profit_rate=actual_profit_pct)
                 del holdings[stock_code]
                 if _tg(ctx):
                     tg_notify_sell(_tg(ctx), stock_code, qty, current_price, signal_type="손절")
                 logger.info(
                     f"[실전] 손절 매도: {label} | 매입가: {avg_price:,.0f}원 | "
-                    f"현재가: {current_price:,.0f}원 | 하락률: {drop_pct:.2f}%"
+                    f"지정가: {limit_price:,}원 | 수익률: {actual_profit_pct:+.2f}%"
                 )
                 continue
 
