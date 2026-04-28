@@ -517,7 +517,7 @@ def main() -> None:
     # real 모드: 봇 시작 시 KIS API 체결 내역으로 당일 예산 현황 초기화
     if config.mode == "real":
         try:
-            _init_token = ctx["token_manager"].get_token()
+            _init_token = ctx["token_manager"].get_valid_token()
             _executions = ctx["order_client"].get_today_ccld(_init_token)
             init_daily_from_api(ctx, _executions)
         except Exception as e:
