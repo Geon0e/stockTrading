@@ -481,6 +481,87 @@ def run_morning_sell_cycle(ctx: dict) -> None:
         logger.error(f"[장초 익절] 사이클 오류: {e}", exc_info=True)
 
 
+def run_morning_stoploss_cycle(ctx: dict) -> None:
+    """10:30에 전일 보유 종목 중 여전히 손실 중인 종목 손절 매도.
+
+    MORNING_STOPLOSS_ENABLED_{MODE}=true 시 활성화.
+    오늘 매수한 종목은 제외하고 전날부터 보유 중인 종목만 대상으로 한다.
+    """
+    if not is_market_open():
+        return
+    config = ctx["config"]
+    if not config.morning_stoploss_enabled:
+        return
+    today = datetime.date.today()
+    if ctx.get("morning_stoploss_date") == today:
+        return  # 당일 이미 실행됨
+    ctx["morning_stoploss_date"] = today
+
+    try:
+        token = ctx["token_manager"].get_valid_token()
+        today_buys = _get_today_buys(config.mode)
+        holdings_detail = ctx["order_client"].get_holdings_detail(token)
+        _exclude = set(config.exclude_list)
+        lock = ctx.get("order_lock")
+        sold = 0
+
+        for code, detail in list(holdings_detail.items()):
+            if code in _traded_today(ctx):
+                continue
+            if code in _exclude:
+                continue
+            if code in today_buys:
+                logger.debug(f"[10:30 손절] 오늘 매수 종목 제외: {code}")
+                continue
+            profit_rate = float(detail["profit_rate"])
+            if profit_rate >= 0:
+                continue  # 본전 이상이면 손절 제외
+
+            qty       = detail["qty"]
+            avg_price = detail["avg_price"]
+            name      = get_stock_name(code)
+            label     = f"{code}({name})" if name else code
+            sell_price    = round(avg_price * (1 + profit_rate / 100))
+            profit_amount = int(avg_price * qty * profit_rate / 100)
+
+            try:
+                if lock:
+                    lock.acquire()
+                try:
+                    result = ctx["order_client"].sell(code, qty, token)
+                finally:
+                    if lock:
+                        lock.release()
+
+                ctx["trade_logger"].log(
+                    "SELL", code, qty, result,
+                    signal_type="10시반손절",
+                    profit_rate=round(profit_rate, 2),
+                    profit_amount=profit_amount,
+                )
+                _traded_today(ctx).add(code)
+                add_daily_budget(ctx, int(sell_price * qty), profit_amount=profit_amount)
+                if _tg(ctx):
+                    tg_notify_sell(_tg(ctx), code, qty, sell_price,
+                                   signal_type=f"10:30손절 {profit_rate:.1f}%")
+                logger.info(
+                    f"[10:30 손절] {label} | 수익률: {profit_rate:+.2f}% | "
+                    f"{qty}주 | 손실: {profit_amount:+,}원"
+                )
+                sold += 1
+            except Exception as e:
+                logger.warning(f"[10:30 손절] 매도 실패 [{label}]: {e}")
+                _traded_today(ctx).add(code)
+
+        if sold:
+            logger.info(f"[10:30 손절] 총 {sold}종목 손절 완료")
+        else:
+            logger.info("[10:30 손절] 손실 중인 전일 보유 종목 없음")
+
+    except Exception as e:
+        logger.error(f"[10:30 손절] 사이클 오류: {e}", exc_info=True)
+
+
 def run_stop_loss_check(ctx: dict) -> None:
     """장중 손절 체크 — 보유 국내주식 실시간 현재가 기준으로 매분 확인"""
     if not is_market_open():
@@ -666,6 +747,11 @@ def main() -> None:
         if config.scan_nasdaq:
             schedule.every().day.at("23:35").do(run_nasdaq_cycle, ctx)
         logger.info("스캔 주기: 국내 09:05 / 나스닥 23:35 고정")
+
+    # 10:30 손절은 스캔 주기와 무관하게 항상 고정 시간 등록
+    if config.morning_stoploss_enabled:
+        schedule.every().day.at("10:30").do(run_morning_stoploss_cycle, ctx)
+        logger.info("10:30 전일 손실 종목 손절 활성화")
 
     monitor_interval = config.monitor_interval_seconds
 
