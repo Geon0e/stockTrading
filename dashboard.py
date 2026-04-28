@@ -290,7 +290,7 @@ def api_get_config():
         "scan_interval_minutes": int(env.get(f"SCAN_INTERVAL_MINUTES_{m}", "0")),
         "budget": budget,
         "max_positions": int(env.get(f"MAX_POSITIONS_{m}", env.get("MAX_POSITIONS", "5"))),
-        "order_quantity": int(env.get(f"ORDER_QUANTITY_{m}", env.get("ORDER_QUANTITY", "1"))),
+        "order_quantity": int(env.get(f"ORDER_QUANTITY_{m}", env.get("ORDER_QUANTITY", "0"))),
         "watchlist": env.get(f"WATCHLIST_{m}", env.get("WATCHLIST", "")),
         "exclude_list": env.get(f"EXCLUDE_LIST_{m}", env.get("EXCLUDE_LIST", "")),
         "scan_all_stocks": env.get(f"SCAN_ALL_STOCKS_{m}", env.get("SCAN_ALL_STOCKS", "false")).lower() == "true",

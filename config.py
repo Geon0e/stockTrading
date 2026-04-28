@@ -110,7 +110,7 @@ def load_config() -> Config:
         real_budget=int(os.getenv("REAL_BUDGET", "500000")),
         real_usd_budget=float(os.getenv("REAL_USD_BUDGET", "750.0")),
         scan_interval_minutes=int(os.getenv(f"SCAN_INTERVAL_MINUTES_{mode.upper()}", "0")),
-        order_quantity=int(os.getenv(f"ORDER_QUANTITY_{mode.upper()}", os.getenv("ORDER_QUANTITY", "1"))),
+        order_quantity=int(os.getenv(f"ORDER_QUANTITY_{mode.upper()}", os.getenv("ORDER_QUANTITY", "0"))),
         watchlist=tuple(c.strip() for c in os.getenv(f"WATCHLIST_{mode.upper()}", os.getenv("WATCHLIST", "")).split(",") if c.strip()),
         exclude_list=tuple(c.strip() for c in os.getenv(f"EXCLUDE_LIST_{mode.upper()}", os.getenv("EXCLUDE_LIST", "")).split(",") if c.strip()),
         order_type=os.getenv(f"ORDER_TYPE_{mode.upper()}", "market"),

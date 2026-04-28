@@ -197,6 +197,8 @@ def _run_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> int:
 
             # 2단계: mock_budget 기반 수량 계산
             quantity = per_position // price if price > 0 else 0
+            if config.order_quantity > 0:
+                quantity = min(quantity, config.order_quantity)
             if quantity < 1:
                 name = get_stock_name(code)
                 label = f"{code}({name})" if name else code

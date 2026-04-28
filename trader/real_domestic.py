@@ -123,6 +123,8 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
 
         # 수량 자동 계산: 포지션 예산을 주가로 나눔
         quantity = per_position // price
+        if config.order_quantity > 0:
+            quantity = min(quantity, config.order_quantity)
         if quantity < 1:
             continue
 
