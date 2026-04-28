@@ -581,9 +581,9 @@ def api_save_restart():
 
     if "order_quantity" in cfg:
         val = int(cfg["order_quantity"])
-        if val >= 1:
+        if 0 <= val <= 100000:
             _write_env_key(f"ORDER_QUANTITY_{mode.upper()}", str(val))
-            changes["주문 수량"] = f"{val}주"
+            changes["주문 수량"] = f"{val}주 (자동)" if val == 0 else f"{val}주"
 
     if "watchlist" in cfg:
         cleaned = _clean_codes(cfg["watchlist"])

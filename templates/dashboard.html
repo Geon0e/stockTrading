@@ -1236,10 +1236,11 @@ function saveAndRestart() {
   };
   const budget = parseInt(document.getElementById('cfgBudget').value) || 0;
   const mp = parseInt(document.getElementById('cfgMaxPositions').value) || 0;
-  const oq = parseInt(document.getElementById('cfgOrderQty').value) || 0;
+  const oqRaw = document.getElementById('cfgOrderQty').value.trim();
+  const oq = oqRaw !== '' ? (parseInt(oqRaw) || 0) : null;
   if (budget > 0) cfg.budget = budget;
   if (mp > 0) cfg.max_positions = mp;
-  if (oq > 0) cfg.order_quantity = oq;
+  if (oq !== null) cfg.order_quantity = oq;  // 0도 허용 (자동계산)
   if (activeMode === 'real') {
     const usd = parseFloat(document.getElementById('cfgUsdBudget').value) || 0;
     if (usd > 0) cfg.usd_budget = usd;
