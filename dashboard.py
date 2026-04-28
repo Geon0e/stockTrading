@@ -7,10 +7,64 @@ import subprocess
 import time
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, render_template, request, stream_with_context
+from flask import Flask, Response, jsonify, redirect, render_template, request, session, stream_with_context
 
 app = Flask(__name__)
+app.secret_key = os.getenv("DASHBOARD_SECRET_KEY", "stocktrading-secret-key-2026")
 _BASE = Path(__file__).parent
+
+_ADMIN_USER = "admin"
+_ADMIN_PASS = "cjswotl"
+
+
+# ── 인증 헬퍼 ──────────────────────────────────────────────────────────────
+
+def _role() -> str:
+    return session.get("role", "")
+
+
+def _require_admin():
+    if _role() != "admin":
+        return jsonify({"ok": False, "error": "관리자 권한이 필요합니다"}), 403
+    return None
+
+
+@app.before_request
+def _check_auth():
+    public = {"login", "logout", "static"}
+    if request.endpoint in public:
+        return
+    if not _role():
+        if request.path.startswith("/api/") or request.path.startswith("/stream/"):
+            return jsonify({"ok": False, "error": "로그인이 필요합니다"}), 401
+        return redirect("/login")
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        if request.form.get("guest"):
+            session["role"] = "guest"
+            return redirect("/")
+        u = request.form.get("username", "").strip()
+        p = request.form.get("password", "").strip()
+        if u == _ADMIN_USER and p == _ADMIN_PASS:
+            session["role"] = "admin"
+            return redirect("/")
+        error = "아이디 또는 비밀번호가 틀렸습니다"
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/login")
+
+
+@app.route("/api/auth/status")
+def api_auth_status():
+    return jsonify({"role": _role()})
 
 
 def _load_trades(mode: str) -> list:
@@ -177,6 +231,8 @@ def api_status():
 
 @app.route("/api/bot/start", methods=["POST"])
 def api_bot_start():
+    err = _require_admin();
+    if err: return err
     mode = _valid_mode((request.get_json(silent=True) or {}).get("mode", "mock"))
     try:
         st = _start_bot(mode)
@@ -187,6 +243,8 @@ def api_bot_start():
 
 @app.route("/api/bot/stop", methods=["POST"])
 def api_bot_stop():
+    err = _require_admin()
+    if err: return err
     mode = _valid_mode((request.get_json(silent=True) or {}).get("mode", "mock"))
     ok, msg = _kill_bot(mode)
     if ok:
@@ -196,6 +254,8 @@ def api_bot_stop():
 
 @app.route("/api/bot/deploy", methods=["POST"])
 def api_bot_deploy():
+    err = _require_admin()
+    if err: return err
     mode = _valid_mode((request.get_json(silent=True) or {}).get("mode", "mock"))
     lines = []
     try:
@@ -275,6 +335,8 @@ def api_get_strategy():
 
 @app.route("/api/strategy", methods=["POST"])
 def api_set_strategy():
+    err = _require_admin()
+    if err: return err
     data = request.get_json(silent=True) or {}
     mode = _valid_mode(data.get("mode", "mock"))
     strategy_data = {k: v for k, v in data.items() if k != "mode"}
@@ -316,6 +378,8 @@ def api_get_config():
 
 @app.route("/api/config", methods=["POST"])
 def api_set_config():
+    err = _require_admin()
+    if err: return err
     data = request.get_json(silent=True) or {}
     mode = _valid_mode(data.get("mode", "mock"))
     changes = {}
@@ -376,7 +440,8 @@ def api_set_config():
 
 @app.route("/api/save-restart", methods=["POST"])
 def api_save_restart():
-    """설정 + 전략을 한 번에 저장하고 봇을 재시작한다."""
+    err = _require_admin()
+    if err: return err
     data = request.get_json(silent=True) or {}
     mode = _valid_mode(data.get("mode", "mock"))
     cfg = data.get("config", {})
