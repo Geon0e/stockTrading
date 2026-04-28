@@ -7,8 +7,6 @@ import subprocess
 import time
 from pathlib import Path
 
-import requests as _requests
-
 from flask import Flask, Response, jsonify, redirect, render_template, request, session, stream_with_context
 
 app = Flask(__name__)
@@ -170,76 +168,6 @@ def _read_env() -> dict:
             k, _, v = line.partition("=")
             result[k.strip()] = v.strip()
     return result
-
-
-_profit_cache: dict = {}   # {mode: {"ts": float, "sell_amount": int, "profit_amount": int}}
-
-
-def _fetch_realized_profit_api(mode: str) -> dict:
-    """KIS API로 당일 매도금액·실현손익 직접 조회. 60초 캐시."""
-    now = time.time()
-    cached = _profit_cache.get(mode)
-    if cached and now - cached["ts"] < 60:
-        return cached
-
-    try:
-        env = _read_env()
-        token_file = _BASE / f".token_cache/token_{mode}.json"
-        if not token_file.exists():
-            return {}
-        token = json.loads(token_file.read_text()).get("token", "")
-        if not token:
-            return {}
-
-        base_url = ("https://openapivts.koreainvestment.com:29443"
-                    if mode == "mock" else "https://openapi.koreainvestment.com:9443")
-        app_key    = env.get(f"{mode.upper()}_APP_KEY", "")
-        app_secret = env.get(f"{mode.upper()}_APP_SECRET", "")
-        acct       = env.get(f"{mode.upper()}_ACCOUNT_NO", "")
-        cano       = acct.replace("-", "")[:8]
-        acnt_prdt  = acct.split("-")[-1] if "-" in acct else "01"
-        tr_id      = "VTTC8001R" if mode == "mock" else "TTTC8001R"
-        today      = datetime.date.today().strftime("%Y%m%d")
-
-        params = {
-            "CANO": cano, "ACNT_PRDT_CD": acnt_prdt,
-            "INQR_STRT_DT": today, "INQR_END_DT": today,
-            "SLL_BUY_DVSN_CD": "00", "INQR_DVSN": "00",
-            "PDNO": "", "CCLD_DVSN": "01",
-            "ORD_GNO_BRNO": "", "ODNO": "",
-            "INQR_DVSN_3": "00", "INQR_DVSN_1": "",
-            "CTX_AREA_FK100": "", "CTX_AREA_NK100": "",
-        }
-        headers = {
-            "content-type": "application/json; charset=utf-8",
-            "authorization": f"Bearer {token}",
-            "appkey": app_key, "appsecret": app_secret,
-            "tr_id": tr_id,
-        }
-        resp = _requests.get(
-            f"{base_url}/uapi/domestic-stock/v1/trading/inquire-daily-ccld",
-            headers=headers, params=params, timeout=5,
-        )
-        data = resp.json()
-        if data.get("rt_cd") != "0":
-            return {}
-
-        sell_amount = profit_amount = 0
-        for item in data.get("output1", []):
-            if item.get("sll_buy_dvsn_cd") != "01":
-                continue
-            qty      = int(item.get("tot_ccld_qty") or "0")
-            price    = float(item.get("avg_prvs") or item.get("ccld_avg_pric") or "0")
-            pchs_avg = float(item.get("pchs_avg_pric") or "0")
-            sell_amount += int(price * qty)
-            if pchs_avg > 0:
-                profit_amount += int((price - pchs_avg) * qty)
-
-        result = {"ts": now, "sell_amount": sell_amount, "profit_amount": profit_amount}
-        _profit_cache[mode] = result
-        return result
-    except Exception:
-        return {}
 
 
 def _clean_codes(raw: str) -> str:
@@ -729,9 +657,9 @@ def api_daily_status():
     today_str = str(today)
     req_date = request.args.get("date", "").strip() or today_str
 
-    # 오늘 날짜 mock 모드면 캐시 파일 우선 사용 (real은 아래에서 API 호출)
+    # 오늘 날짜면 캐시 파일 우선 사용
     status_path = _BASE / f"logs/daily_status_{mode}.json"
-    if req_date == today_str and mode == "mock" and status_path.exists():
+    if req_date == today_str and status_path.exists():
         try:
             cached = json.loads(status_path.read_text(encoding="utf-8"))
             if cached.get("date") == today_str and "profit_amount" in cached:
@@ -763,13 +691,6 @@ def api_daily_status():
             if "익절" in str(r.get("signal_type", "")):
                 tp_count += 1
                 tp_amount += amount
-
-    # 오늘 real 모드: KIS API로 매도금액·수익 덮어쓰기 (60초 캐시)
-    if req_date == today_str and mode == "real":
-        api_profit = _fetch_realized_profit_api(mode)
-        if api_profit:
-            sell_amount   = api_profit.get("sell_amount", sell_amount)
-            profit_amount = api_profit.get("profit_amount", profit_amount)
 
     data = {
         "date": req_date, "mode": mode,
