@@ -548,16 +548,21 @@ code { color: #60a5fa; font-size: 11px; }
         </div>
 
         <div style="margin-top:10px">
-          <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">익절 / 손절 <span style="font-weight:normal;text-transform:none;color:#333">0 = 비활성화</span></div>
+          <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">익절 / 손절 <span style="font-weight:normal;text-transform:none;color:#333">0 = 비활성화 · 매입가 기준 지정가 매도</span></div>
           <div class="cfg-row">
             <span style="font-size:11px;color:#4ade80;width:28px">익절</span>
             <input type="number" id="cfgTakeProfit" class="cfg-input" style="width:70px" min="0" step="0.1" placeholder="0">
-            <span class="cfg-hint">% 이상 수익 시 자동 매도</span>
+            <span class="cfg-hint">% 이상 수익 시 → 매입가×(1+%) 지정가 매도</span>
           </div>
           <div class="cfg-row" style="margin-top:6px">
             <span style="font-size:11px;color:#e87070;width:28px">손절</span>
             <input type="number" id="cfgStopLoss" class="cfg-input" style="width:70px" min="0" step="0.1" placeholder="0">
-            <span class="cfg-hint">% 이상 손실 시 자동 매도</span>
+            <span class="cfg-hint">% 이상 손실 시 → 매입가×(1-%) 지정가 매도</span>
+          </div>
+          <div class="cfg-row" style="margin-top:6px">
+            <span style="font-size:11px;color:#888;width:72px">모니터링 주기</span>
+            <input type="number" id="cfgMonitorInterval" class="cfg-input" style="width:70px" min="1" placeholder="1">
+            <span class="cfg-hint">분마다 체크 (기본 1분)</span>
           </div>
         </div>
 
@@ -1016,8 +1021,9 @@ function saveAndRestart() {
     exclude_list:   document.getElementById('cfgExcludeList').value.trim(),
     scan_all_stocks:  document.getElementById('cfgScanAll').checked,
     scan_nasdaq:      document.getElementById('cfgScanNasdaq').checked,
-    take_profit_rate: parseFloat(document.getElementById('cfgTakeProfit').value) || 0,
-    stop_loss_pct:    parseFloat(document.getElementById('cfgStopLoss').value) || 0,
+    take_profit_rate:        parseFloat(document.getElementById('cfgTakeProfit').value) || 0,
+    stop_loss_pct:           parseFloat(document.getElementById('cfgStopLoss').value) || 0,
+    monitor_interval_minutes: parseInt(document.getElementById('cfgMonitorInterval').value) || 1,
     order_type:       document.querySelector('input[name="cfgOrderType"]:checked')?.value || 'market',
     limit_order_pct:  parseFloat(document.getElementById('cfgLimitPct').value) || 1.0,
   };
@@ -1105,6 +1111,7 @@ function loadSettings() {
     document.getElementById('cfgScanNasdaq').checked = !!d.scan_nasdaq;
     document.getElementById('cfgTakeProfit').value = d.take_profit_rate ?? '';
     document.getElementById('cfgStopLoss').value = d.stop_loss_pct ?? '';
+    document.getElementById('cfgMonitorInterval').value = d.monitor_interval_minutes ?? 1;
     const isLimit = d.order_type === 'limit';
     document.getElementById('cfgOrderTypeMarket').checked = !isLimit;
     document.getElementById('cfgOrderTypeLimit').checked = isLimit;
