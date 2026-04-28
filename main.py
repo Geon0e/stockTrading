@@ -94,7 +94,7 @@ def _notify_scan(ctx, results):
 
 
 def run_take_profit_cycle(ctx: dict) -> None:
-    """1분마다 실행: 수익률 기준 이상 보유 종목 익절 매도"""
+    """설정 주기마다 실행: 수익률 기준 이상 보유 종목 익절 지정가 매도"""
     if not is_market_open():
         return
 
@@ -107,10 +107,12 @@ def run_take_profit_cycle(ctx: dict) -> None:
             profit_rate = detail["profit_rate"]
             if profit_rate >= config.take_profit_rate:
                 qty = detail["qty"]
-                result = ctx["order_client"].sell(code, qty, token)
+                avg_price = detail["avg_price"]
+                limit_price = OrderClient._round_to_tick(int(avg_price * (1 + config.take_profit_rate / 100)))
+                result = ctx["order_client"].sell(code, qty, token, limit_price=limit_price)
                 ctx["trade_logger"].log("SELL", code, qty, result, signal_type="익절", profit_rate=profit_rate)
                 _notify_take_profit_sell(ctx, code, qty, profit_rate)
-                logger.info(f"익절 매도: {code} | 수익률 {profit_rate}%")
+                logger.info(f"익절 매도: {code} | 수익률 {profit_rate}% | 지정가 {limit_price:,}원")
 
     except Exception as e:
         logger.error(f"익절 사이클 오류: {e}", exc_info=True)
@@ -369,12 +371,13 @@ def run_stop_loss_check(ctx: dict) -> None:
                 qty   = info["qty"]
                 name  = get_stock_name(stock_code)
                 label = f"{stock_code}({name})" if name else stock_code
-                result = ctx["order_client"].sell(stock_code, qty, token)
+                limit_price = OrderClient._round_to_tick(int(avg_price * (1 - config.stop_loss_pct / 100)))
+                result = ctx["order_client"].sell(stock_code, qty, token, limit_price=limit_price)
                 ctx["trade_logger"].log("SELL", stock_code, qty, result, signal_type="손절")
                 _notify_sell(ctx, stock_code, qty, current_price, signal_type="손절")
                 logger.info(
                     f"손절 매도: {label} | 매입가: {avg_price:,.0f} | "
-                    f"현재가: {current_price:,.0f} | 수익률: {profit_pct:.2f}%"
+                    f"현재가: {current_price:,.0f} | 수익률: {profit_pct:.2f}% | 지정가 {limit_price:,}원"
                 )
         _save_holdings_snapshot(config.mode, snapshot)
 
@@ -472,12 +475,13 @@ def main() -> None:
         if config.scan_nasdaq:
             schedule.every().day.at("23:35").do(run_nasdaq_cycle, ctx)
         logger.info("스캔 주기: 국내 09:05 / 나스닥 23:35 고정")
+    monitor_interval = config.monitor_interval_minutes
     if config.stop_loss_pct > 0:
-        schedule.every(1).minutes.do(run_stop_loss_check, ctx)
-        logger.info(f"손절 모니터링 활성화: -{config.stop_loss_pct}% | 1분 주기 체크")
+        schedule.every(monitor_interval).minutes.do(run_stop_loss_check, ctx)
+        logger.info(f"손절 모니터링 활성화: -{config.stop_loss_pct}% | {monitor_interval}분 주기 체크")
     if config.take_profit_rate > 0:
-        schedule.every(1).minutes.do(run_take_profit_cycle, ctx)
-        logger.info(f"익절 모니터링 활성화: +{config.take_profit_rate}% | 1분 주기 체크")
+        schedule.every(monitor_interval).minutes.do(run_take_profit_cycle, ctx)
+        logger.info(f"익절 모니터링 활성화: +{config.take_profit_rate}% | {monitor_interval}분 주기 체크")
 
     while True:
         schedule.run_pending()

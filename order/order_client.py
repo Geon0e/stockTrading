@@ -23,8 +23,8 @@ class OrderClient:
     def buy(self, stock_code: str, quantity: int, token: str, limit_price: int = None) -> dict:
         return self._place_order("매수", stock_code, quantity, self._config.tr_buy, token, limit_price=limit_price)
 
-    def sell(self, stock_code: str, quantity: int, token: str) -> dict:
-        return self._place_order("매도", stock_code, quantity, self._config.tr_sell, token)
+    def sell(self, stock_code: str, quantity: int, token: str, limit_price: int = None) -> dict:
+        return self._place_order("매도", stock_code, quantity, self._config.tr_sell, token, limit_price=limit_price)
 
     def buy_overseas(self, symbol: str, exchange: str, quantity: int, token: str, limit_price: float = None) -> dict:
         price = str(limit_price) if limit_price else self._fetch_overseas_price(symbol, exchange, token)
@@ -123,8 +123,9 @@ class OrderClient:
             if not item.get("pdno") or qty <= 0:
                 continue
             result[item["pdno"]] = {
-                "qty": qty,
+                "qty":         qty,
                 "profit_rate": Decimal(item.get("evlu_pfls_rt", "0")),
+                "avg_price":   float(item.get("pchs_avg_pric", "0")),
             }
         return result
 

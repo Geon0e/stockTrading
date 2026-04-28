@@ -63,6 +63,7 @@ class Config:
     exclude_list: tuple     # 거래 제외 종목 코드 리스트 (모드 무관 적용)
     order_type: str         # "market" | "limit"
     limit_order_pct: float  # 지정가 주문 시 포착 가격 대비 허용 % (예: 1.0 → 신호가 × 1.01)
+    monitor_interval_minutes: int  # 손절/익절 모니터링 주기(분). 기본 1분
 
 
 def load_config() -> Config:
@@ -110,5 +111,6 @@ def load_config() -> Config:
         exclude_list=tuple(c.strip() for c in os.getenv(f"EXCLUDE_LIST_{mode.upper()}", os.getenv("EXCLUDE_LIST", "")).split(",") if c.strip()),
         order_type=os.getenv(f"ORDER_TYPE_{mode.upper()}", "market"),
         limit_order_pct=float(os.getenv(f"LIMIT_ORDER_PCT_{mode.upper()}", "1.0")),
+        monitor_interval_minutes=int(os.getenv(f"MONITOR_INTERVAL_MINUTES_{mode.upper()}", os.getenv("MONITOR_INTERVAL_MINUTES", "1"))),
         **env,
     )
