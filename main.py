@@ -117,7 +117,8 @@ def run_take_profit_cycle(ctx: dict) -> None:
             if profit_rate >= config.take_profit_rate:
                 qty = detail["qty"]
                 avg_price = detail["avg_price"]
-                limit_price = OrderClient._round_to_tick(int(avg_price * (1 + config.take_profit_rate / 100)))
+                limit_pct = config.take_profit_limit_pct or config.take_profit_rate
+                limit_price = OrderClient._round_to_tick(int(avg_price * (1 + limit_pct / 100)))
                 with lock if lock else _null_ctx():
                     result = ctx["order_client"].sell(code, qty, token, limit_price=limit_price)
                 ctx["trade_logger"].log("SELL", code, qty, result, signal_type="익절", profit_rate=profit_rate)
@@ -381,7 +382,8 @@ def run_stop_loss_check(ctx: dict) -> None:
                 qty   = info["qty"]
                 name  = get_stock_name(stock_code)
                 label = f"{stock_code}({name})" if name else stock_code
-                limit_price = OrderClient._round_to_tick(int(avg_price * (1 - config.stop_loss_pct / 100)))
+                limit_pct = config.stop_loss_limit_pct or config.stop_loss_pct
+                limit_price = OrderClient._round_to_tick(int(avg_price * (1 - limit_pct / 100)))
                 lock = ctx.get("order_lock")
                 with lock if lock else _null_ctx():
                     result = ctx["order_client"].sell(stock_code, qty, token, limit_price=limit_price)

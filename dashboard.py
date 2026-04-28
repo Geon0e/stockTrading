@@ -296,7 +296,9 @@ def api_get_config():
         "scan_all_stocks": env.get(f"SCAN_ALL_STOCKS_{m}", env.get("SCAN_ALL_STOCKS", "false")).lower() == "true",
         "scan_nasdaq": env.get(f"SCAN_NASDAQ_{m}", env.get("SCAN_NASDAQ", "false")).lower() == "true",
         "take_profit_rate": float(env.get(f"TAKE_PROFIT_RATE_{m}", env.get("TAKE_PROFIT_RATE", "0"))),
+        "take_profit_limit_pct": float(env.get(f"TAKE_PROFIT_LIMIT_PCT_{m}", env.get("TAKE_PROFIT_LIMIT_PCT", "0"))),
         "stop_loss_pct": float(env.get(f"STOP_LOSS_PCT_{m}", env.get("STOP_LOSS_PCT", "0"))),
+        "stop_loss_limit_pct": float(env.get(f"STOP_LOSS_LIMIT_PCT_{m}", env.get("STOP_LOSS_LIMIT_PCT", "0"))),
         "monitor_interval_seconds": int(env.get(f"MONITOR_INTERVAL_SECONDS_{m}", env.get("MONITOR_INTERVAL_SECONDS", "60"))),
         "order_type": env.get(f"ORDER_TYPE_{m}", "market"),
         "limit_order_pct": float(env.get(f"LIMIT_ORDER_PCT_{m}", "1.0")),
@@ -426,12 +428,22 @@ def api_save_restart():
     if "take_profit_rate" in cfg:
         val = float(cfg["take_profit_rate"])
         _write_env_key(f"TAKE_PROFIT_RATE_{mode.upper()}", str(val))
-        changes["익절"] = f"+{val}%" if val > 0 else "비활성화"
+        changes["익절 트리거"] = f"+{val}%" if val > 0 else "비활성화"
+
+    if "take_profit_limit_pct" in cfg:
+        val = float(cfg["take_profit_limit_pct"])
+        _write_env_key(f"TAKE_PROFIT_LIMIT_PCT_{mode.upper()}", str(val))
+        changes["익절 지정가"] = f"매입가×(1+{val}%)" if val > 0 else "트리거%와 동일"
 
     if "stop_loss_pct" in cfg:
         val = float(cfg["stop_loss_pct"])
         _write_env_key(f"STOP_LOSS_PCT_{mode.upper()}", str(val))
-        changes["손절"] = f"-{val}%" if val > 0 else "비활성화"
+        changes["손절 트리거"] = f"-{val}%" if val > 0 else "비활성화"
+
+    if "stop_loss_limit_pct" in cfg:
+        val = float(cfg["stop_loss_limit_pct"])
+        _write_env_key(f"STOP_LOSS_LIMIT_PCT_{mode.upper()}", str(val))
+        changes["손절 지정가"] = f"매입가×(1-{val}%)" if val > 0 else "트리거%와 동일"
 
     if "monitor_interval_seconds" in cfg:
         val = int(cfg["monitor_interval_seconds"])

@@ -53,8 +53,10 @@ class Config:
     ma_long_period: int
     scan_all_stocks: bool   # True: 전종목, False: 거래량 상위만
     max_positions: int      # 최대 동시 보유 종목 수
-    take_profit_rate: float # 익절 수익률 기준 (%)
-    stop_loss_pct: float    # 손절 기준 (예: 5.0 → 매입가 대비 -5% 시 매도, 0 = 비활성화)
+    take_profit_rate: float       # 익절 트리거 수익률 기준 (%)
+    take_profit_limit_pct: float  # 익절 지정가: 매입가 × (1 + %) — 0이면 take_profit_rate와 동일
+    stop_loss_pct: float          # 손절 트리거 기준 (%, 0 = 비활성화)
+    stop_loss_limit_pct: float    # 손절 지정가: 매입가 × (1 - %) — 0이면 stop_loss_pct와 동일
     mock_budget: int        # 모의 운용 예산 KRW (포지션당 예산 = mock_budget / max_positions)
     real_budget: int        # 실전 운용 예산 KRW (포지션당 예산 = real_budget / max_positions)
     real_usd_budget: float  # 실전 해외주식 예산 USD
@@ -101,7 +103,9 @@ def load_config() -> Config:
         us_scan_mode=os.getenv("US_SCAN_MODE", "nasdaq100"),
         max_positions=int(os.getenv(f"MAX_POSITIONS_{mode.upper()}", os.getenv("MAX_POSITIONS", "5"))),
         take_profit_rate=float(os.getenv(f"TAKE_PROFIT_RATE_{mode.upper()}", os.getenv("TAKE_PROFIT_RATE", "0"))),
+        take_profit_limit_pct=float(os.getenv(f"TAKE_PROFIT_LIMIT_PCT_{mode.upper()}", os.getenv("TAKE_PROFIT_LIMIT_PCT", "0"))),
         stop_loss_pct=float(os.getenv(f"STOP_LOSS_PCT_{mode.upper()}", os.getenv("STOP_LOSS_PCT", "0"))),
+        stop_loss_limit_pct=float(os.getenv(f"STOP_LOSS_LIMIT_PCT_{mode.upper()}", os.getenv("STOP_LOSS_LIMIT_PCT", "0"))),
         mock_budget=int(os.getenv("MOCK_BUDGET", "500000")),
         real_budget=int(os.getenv("REAL_BUDGET", "500000")),
         real_usd_budget=float(os.getenv("REAL_USD_BUDGET", "750.0")),
