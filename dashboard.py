@@ -653,21 +653,51 @@ def api_portfolio():
 @app.route("/api/daily-status")
 def api_daily_status():
     mode = _valid_mode(request.args.get("mode", "mock"))
-    path = _BASE / f"logs/daily_status_{mode}.json"
-    if not path.exists():
-        env = _read_env()
-        m = mode.upper()
-        budget = int(env.get("MOCK_BUDGET", "500000")) if mode == "mock" else int(env.get("REAL_BUDGET", "500000"))
-        return jsonify({
-            "date": "", "mode": mode,
-            "budget_total": budget, "budget_remaining": budget,
-            "buy_count": 0, "buy_amount": 0,
-            "take_profit_count": 0, "take_profit_amount": 0,
-        })
+    today = datetime.date.today()
+    today_str = str(today)
+
+    # 캐시 파일이 오늘 날짜면 그대로 반환
+    status_path = _BASE / f"logs/daily_status_{mode}.json"
+    if status_path.exists():
+        try:
+            cached = json.loads(status_path.read_text(encoding="utf-8"))
+            if cached.get("date") == today_str:
+                return jsonify(cached)
+        except Exception:
+            pass
+
+    # 거래 내역에서 당일 현황 재계산
+    env = _read_env()
+    budget = int(env.get("MOCK_BUDGET", "500000")) if mode == "mock" else int(env.get("REAL_BUDGET", "500000"))
+    buy_count = buy_amount = tp_count = tp_amount = 0
+    for r in _load_trades(mode):
+        ts = r.get("timestamp", "")
+        if not ts.startswith(today_str):
+            continue
+        qty = int(r.get("quantity", 0))
+        price = float(r.get("exec_price") or 0)
+        amount = int(price * qty)
+        if r.get("action") == "BUY":
+            buy_count += 1
+            buy_amount += amount
+        elif r.get("action") == "SELL" and "익절" in str(r.get("signal_type", "")):
+            tp_count += 1
+            tp_amount += amount
+
+    data = {
+        "date": today_str, "mode": mode,
+        "budget_total": budget,
+        "budget_remaining": max(0, budget - buy_amount + tp_amount),
+        "buy_count": buy_count, "buy_amount": buy_amount,
+        "take_profit_count": tp_count, "take_profit_amount": tp_amount,
+    }
+    # 재계산 결과를 캐시 파일로 저장
     try:
-        return jsonify(json.loads(path.read_text(encoding="utf-8")))
+        status_path.parent.mkdir(exist_ok=True)
+        status_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     except Exception:
-        return jsonify({}), 500
+        pass
+    return jsonify(data)
 
 
 @app.route("/api/trades/summary")

@@ -14,18 +14,51 @@ def traded_today(ctx: dict) -> set:
     return ctx["traded_codes"]
 
 
+def _rebuild_daily_from_trades(mode: str, today: datetime.date, budget: int) -> dict:
+    """trades_{mode}.jsonl에서 당일 매수/익절 내역을 읽어 예산 현황 재계산."""
+    today_str = str(today)
+    buy_count = buy_amount = tp_count = tp_amount = 0
+    path = _LOG_DIR / f"trades_{mode}.jsonl"
+    if path.exists():
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                r = json.loads(line)
+                if not str(r.get("timestamp", "")).startswith(today_str):
+                    continue
+                qty = int(r.get("quantity", 0))
+                price = float(r.get("exec_price") or 0)
+                amount = int(price * qty)
+                action = r.get("action", "")
+                if action == "BUY":
+                    buy_count += 1
+                    buy_amount += amount
+                elif action == "SELL" and "익절" in str(r.get("signal_type", "")):
+                    tp_count += 1
+                    tp_amount += amount
+            except Exception:
+                pass
+    return {
+        "daily_budget_total":       budget,
+        "daily_budget_remaining":   max(0, budget - buy_amount + tp_amount),
+        "daily_buy_count":          buy_count,
+        "daily_buy_amount":         buy_amount,
+        "daily_take_profit_count":  tp_count,
+        "daily_take_profit_amount": tp_amount,
+    }
+
+
 def _ensure_daily_budget(ctx: dict) -> None:
     today = datetime.date.today()
     if ctx.get("daily_budget_date") != today:
         config = ctx["config"]
         budget = config.real_budget if config.mode == "real" else config.mock_budget
-        ctx["daily_budget_total"]         = budget
-        ctx["daily_budget_remaining"]     = budget
-        ctx["daily_buy_count"]            = 0
-        ctx["daily_buy_amount"]           = 0
-        ctx["daily_take_profit_count"]    = 0
-        ctx["daily_take_profit_amount"]   = 0
-        ctx["daily_budget_date"]          = today
+        stats = _rebuild_daily_from_trades(config.mode, today, budget)
+        ctx.update(stats)
+        ctx["daily_budget_date"] = today
+        _save_daily_status(ctx)
 
 
 def get_daily_budget(ctx: dict) -> int:
