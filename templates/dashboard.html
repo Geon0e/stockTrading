@@ -1063,6 +1063,7 @@ function loadDailyStatus() {
 // ── 포트폴리오 ──────────────────────────────────────
 function loadPortfolio() {
   fetch('/api/portfolio?mode=' + activeMode).then(r => r.json()).then(items => {
+    items.sort((a, b) => (b.profit_pct ?? -Infinity) - (a.profit_pct ?? -Infinity));
     const tb = document.getElementById('pfBody');
     tb.innerHTML = '';
     if (!items.length) {

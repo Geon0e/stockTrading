@@ -553,9 +553,11 @@ def api_portfolio():
                 if holdings[code]["qty"] <= 0:
                     del holdings[code]
     result = [
-        {"code": v["code"], "name": v["name"], "qty": v["qty"], "avg_price": round(v["avg_price"], 2)}
+        {"code": v["code"], "name": v["name"], "qty": v["qty"], "avg_price": round(v["avg_price"], 2),
+         "current_price": v.get("current_price"), "profit_pct": v.get("profit_pct")}
         for v in holdings.values()
     ]
+    result.sort(key=lambda x: (x["profit_pct"] is None, -(x["profit_pct"] or 0)))
     return jsonify(result)
 
 
