@@ -790,7 +790,7 @@ code { color: #60a5fa; font-size: 11px; }
 
 <script>
 let autoScroll  = true;
-let activeMode  = 'mock';
+let activeMode  = 'real';
 let spinning    = { mock: false, real: false };
 let botStatus   = { mock: { running: false, pid: null }, real: { running: false, pid: null } };
 let userRole    = '';
@@ -1400,6 +1400,7 @@ function switchMobTab(tab) {
 makeEventSource('mock');
 makeEventSource('real');
 loadAuthStatus();
+setActiveMode('real');
 loadStatus();
 loadPortfolio();
 loadTradeDates();
