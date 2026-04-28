@@ -145,8 +145,13 @@ def _run_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> int:
     """국내 매매 사이클. 매수한 종목 수 반환"""
     config = ctx["config"]
     holdings = ctx["order_client"].get_holdings(token)
+    _exclude = set(config.exclude_list)
 
     for stock_code, info in list(holdings.items()):
+        if stock_code in _traded_today(ctx):
+            continue
+        if stock_code in _exclude:
+            continue
         qty       = info["qty"]
         avg_price = float(info.get("avg_price") or 0)
         prices = ctx["price_client"].fetch_closing_prices(
@@ -376,7 +381,12 @@ def run_stop_loss_check(ctx: dict) -> None:
         token    = ctx["token_manager"].get_valid_token()
         holdings = ctx["order_client"].get_holdings(token)
         snapshot = []
+        _exclude = set(config.exclude_list)
         for stock_code, info in list(holdings.items()):
+            if stock_code in _traded_today(ctx):
+                continue
+            if stock_code in _exclude:
+                continue
             avg_price = float(info.get("avg_price") or 0)
             item = {
                 "code": stock_code,
@@ -412,8 +422,13 @@ def run_stop_loss_check(ctx: dict) -> None:
                 limit_pct = config.stop_loss_limit_pct or config.stop_loss_pct
                 limit_price = OrderClient._round_to_tick(int(avg_price * (1 - limit_pct / 100)))
                 lock = ctx.get("order_lock")
-                with lock if lock else _null_ctx():
-                    result = ctx["order_client"].sell(stock_code, qty, token, limit_price=limit_price)
+                try:
+                    with lock if lock else _null_ctx():
+                        result = ctx["order_client"].sell(stock_code, qty, token, limit_price=limit_price)
+                except Exception as sell_err:
+                    logger.warning(f"손절 매도 실패 [{stock_code}]: {sell_err} — 당일 재시도 중단")
+                    _traded_today(ctx).add(stock_code)
+                    continue
                 actual_profit_pct = round((limit_price - avg_price) / avg_price * 100, 2)
                 ctx["trade_logger"].log("SELL", stock_code, qty, result, signal_type="손절",
                                         exec_price=str(limit_price), profit_rate=actual_profit_pct)

@@ -35,7 +35,12 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
     holdings = ctx["order_client"].get_holdings(token)
 
     # ── 매도 ────────────────────────────────────────────────────────────
+    _exclude = set(config.exclude_list)
     for stock_code, info in list(holdings.items()):
+        if stock_code in _traded_today(ctx):
+            continue
+        if stock_code in _exclude:
+            continue
         qty = info["qty"]
         avg_price = float(info.get("avg_price") or 0)
         try:
@@ -60,7 +65,8 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
                 try:
                     result = ctx["order_client"].sell(stock_code, qty, token, limit_price=limit_price)
                 except Exception as e:
-                    logger.warning(f"[실전] 손절 매도 실패 [{stock_code}]: {e} — 스킵")
+                    logger.warning(f"[실전] 손절 매도 실패 [{stock_code}]: {e} — 당일 재시도 중단")
+                    _traded_today(ctx).add(stock_code)
                     continue
                 actual_profit_pct = round((limit_price - avg_price) / avg_price * 100, 2)
                 ctx["trade_logger"].log("SELL", stock_code, qty, result, signal_type="손절",
@@ -85,7 +91,8 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
             try:
                 result = ctx["order_client"].sell(stock_code, qty, token)
             except Exception as e:
-                logger.warning(f"[실전] 전략 매도 실패 [{stock_code}]: {e} — 스킵")
+                logger.warning(f"[실전] 전략 매도 실패 [{stock_code}]: {e} — 당일 재시도 중단")
+                _traded_today(ctx).add(stock_code)
                 continue
             ctx["trade_logger"].log("SELL", stock_code, qty, result)
             del holdings[stock_code]
