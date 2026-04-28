@@ -121,7 +121,7 @@ def _notify_sell(ctx, code, qty, price, signal_type: str = "", market: str = "KR
         tg_notify_sell(_tg(ctx), code, qty, price, signal_type=signal_type, market=market)
 
 
-def _run_domestic_cycle(ctx: dict, token: str) -> int:
+def _run_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> int:
     """국내 매매 사이클. 매수한 종목 수 반환"""
     config = ctx["config"]
     holdings = ctx["order_client"].get_holdings(token)
@@ -162,6 +162,8 @@ def _run_domestic_cycle(ctx: dict, token: str) -> int:
     bought = 0
     capacity = config.max_positions - len(holdings)
     per_position = config.mock_budget // config.max_positions
+    if skip_buy:
+        return 0
     if capacity > 0:
         candidates = ctx["screener"].scan(token, all_stocks=config.scan_all_stocks)
         if candidates:
@@ -385,12 +387,18 @@ def run_domestic_cycle(ctx: dict) -> None:
     if not is_market_open():
         logger.info("국내 장 시간 외 — 건너뜀")
         return
+    today = datetime.date.today()
+    skip_buy = (ctx.get("domestic_buy_date") == today)
+    if skip_buy:
+        logger.info("오늘 이미 매수 완료 — 매수 단계 건너뜀 (매도 체크만 실행)")
     try:
         token = ctx["token_manager"].get_valid_token()
         if ctx["config"].mode == "real":
-            run_real_domestic_cycle(ctx, token)
+            bought = run_real_domestic_cycle(ctx, token, skip_buy=skip_buy)
         else:
-            _run_domestic_cycle(ctx, token)
+            bought = _run_domestic_cycle(ctx, token, skip_buy=skip_buy)
+        if bought > 0:
+            ctx["domestic_buy_date"] = today
     except Exception as e:
         logger.error(f"국내 사이클 오류: {e}", exc_info=True)
 
@@ -442,14 +450,15 @@ def main() -> None:
     logger.info(f"텔레그램 알림: {'활성화' if telegram_bot else '비활성화 (mock)'}")
 
     ctx = {
-        "config":        config,
-        "token_manager": TokenManager(config),
-        "price_client":  price_client,
-        "order_client":  OrderClient(config),
-        "strategy":      strategy,
-        "screener":      StockScreener(config, price_client, strategy),
-        "trade_logger":  TradeLogger(config.mode),
-        "telegram_bot":  telegram_bot,
+        "config":              config,
+        "token_manager":       TokenManager(config),
+        "price_client":        price_client,
+        "order_client":        OrderClient(config),
+        "strategy":            strategy,
+        "screener":            StockScreener(config, price_client, strategy),
+        "trade_logger":        TradeLogger(config.mode),
+        "telegram_bot":        telegram_bot,
+        "domestic_buy_date":   None,  # 당일 매수 완료 날짜 (중복 매수 방지)
     }
 
     interval = config.scan_interval_minutes

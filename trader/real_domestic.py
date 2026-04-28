@@ -17,7 +17,7 @@ def _tg(ctx):
     return ctx.get("telegram_bot")
 
 
-def run_real_domestic_cycle(ctx: dict, token: str) -> int:
+def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> int:
     """실전 국내 매매 사이클.
 
     mock과의 차이:
@@ -88,6 +88,9 @@ def run_real_domestic_cycle(ctx: dict, token: str) -> int:
 
     # ── 매수 ────────────────────────────────────────────────────────────
     bought = 0
+    if skip_buy:
+        logger.info("[실전] 오늘 이미 매수 완료 — 매수 건너뜀")
+        return 0
     capacity = config.max_positions - len(holdings)
     if capacity <= 0:
         logger.info(f"[실전] 최대 포지션 도달 ({config.max_positions}개) — 매수 건너뜀")
