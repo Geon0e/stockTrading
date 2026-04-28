@@ -475,6 +475,7 @@ def api_get_config():
         "monitor_interval_seconds": int(env.get(f"MONITOR_INTERVAL_SECONDS_{m}", env.get("MONITOR_INTERVAL_SECONDS", "60"))),
         "morning_sell_profit_pct": float(env.get(f"MORNING_SELL_PROFIT_PCT_{m}", env.get("MORNING_SELL_PROFIT_PCT", "0"))),
         "morning_stoploss_enabled": env.get(f"MORNING_STOPLOSS_ENABLED_{m}", env.get("MORNING_STOPLOSS_ENABLED", "false")).lower() == "true",
+        "matagi_drop_pct": float(env.get(f"MATAGI_DROP_PCT_{m}", env.get("MATAGI_DROP_PCT", "1.5"))),
         "order_type": env.get(f"ORDER_TYPE_{m}", "market"),
         "limit_order_pct": float(env.get(f"LIMIT_ORDER_PCT_{m}", "1.0")),
     }
@@ -643,6 +644,12 @@ def api_save_restart():
         val = bool(cfg["morning_stoploss_enabled"])
         _write_env_key(f"MORNING_STOPLOSS_ENABLED_{mode.upper()}", "true" if val else "false")
         changes["10:30 손절"] = "활성화" if val else "비활성화"
+
+    if "matagi_drop_pct" in cfg:
+        val = float(cfg["matagi_drop_pct"])
+        if val >= 0:
+            _write_env_key(f"MATAGI_DROP_PCT_{mode.upper()}", str(val))
+            changes["물타기 하락 기준"] = f"-{val}%"
 
     if "order_type" in cfg:
         val = cfg["order_type"] if cfg["order_type"] in ("market", "limit") else "market"

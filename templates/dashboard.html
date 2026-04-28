@@ -586,6 +586,9 @@ code { color: #60a5fa; font-size: 11px; }
           <span style="font-size:11px;color:#555;margin-left:12px">최대 주문 수량</span>
           <input type="number" id="cfgOrderQty" class="cfg-input" style="width:70px" min="0" placeholder="0" value="0">
           <span class="cfg-hint" id="cfgOrderQtyHint">주 (0=무제한)</span>
+          <span style="font-size:11px;color:#a78bfa;margin-left:12px">물타기 기준</span>
+          <input type="number" id="cfgMatagiDrop" class="cfg-input" style="width:60px" min="0" step="0.1" placeholder="1.5">
+          <span class="cfg-hint">% 하락 시 (MA20 위 + 반등 확인)</span>
         </div>
 
         <div style="margin-top:10px">
@@ -1255,6 +1258,7 @@ function saveAndRestart() {
   if (budget > 0) cfg.budget = budget;
   if (mp > 0) cfg.max_positions = mp;
   if (oq !== null) cfg.order_quantity = oq;  // 0도 허용 (자동계산)
+  cfg.matagi_drop_pct = parseFloat(document.getElementById('cfgMatagiDrop').value) || 1.5;
   if (activeMode === 'real') {
     const usd = parseFloat(document.getElementById('cfgUsdBudget').value) || 0;
     if (usd > 0) cfg.usd_budget = usd;
@@ -1327,6 +1331,7 @@ function loadSettings() {
     }
     document.getElementById('cfgMaxPositions').value = d.max_positions ?? '';
     document.getElementById('cfgOrderQty').value = d.order_quantity ?? 0;
+    document.getElementById('cfgMatagiDrop').value = d.matagi_drop_pct ?? 1.5;
     document.getElementById('cfgWatchlist').value = d.watchlist ?? '';
     document.getElementById('cfgExcludeList').value = d.exclude_list ?? '';
     document.getElementById('cfgScanAll').checked = !!d.scan_all_stocks;
