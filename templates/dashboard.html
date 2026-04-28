@@ -1081,7 +1081,7 @@ function switchRightTab(tab) {
   activeRightTab = tab;
   document.getElementById('portfolioPanel').style.display = tab === 'portfolio' ? '' : 'none';
   document.getElementById('dailyPanel').style.display     = tab === 'daily'     ? '' : 'none';
-  document.getElementById('tradesPanel').style.display    = tab === 'trades'    ? '' : 'none';
+  document.getElementById('tradesPanel').style.display    = tab === 'trades'    ? 'flex' : 'none';
   document.getElementById('settingsPanel').style.display  = tab === 'settings'  ? '' : 'none';
   document.getElementById('historyPanel').style.display   = tab === 'history'   ? '' : 'none';
   document.getElementById('tradesRefreshBtn').style.display = (tab === 'portfolio' || tab === 'trades') ? '' : 'none';
@@ -1384,7 +1384,7 @@ function switchMobTab(tab) {
     document.getElementById('mobTabHistory').classList.toggle('active',   tab === 'history');
     document.getElementById('portfolioPanel').style.display = tab === 'portfolio' ? '' : 'none';
     document.getElementById('dailyPanel').style.display     = tab === 'daily'     ? '' : 'none';
-    document.getElementById('tradesPanel').style.display    = tab === 'trades'    ? '' : 'none';
+    document.getElementById('tradesPanel').style.display    = tab === 'trades'    ? 'flex' : 'none';
     document.getElementById('settingsPanel').style.display  = tab === 'settings'  ? '' : 'none';
     document.getElementById('historyPanel').style.display   = tab === 'history'   ? '' : 'none';
     document.getElementById('tradesRefreshBtn').style.display = (tab === 'portfolio' || tab === 'trades') ? '' : 'none';
