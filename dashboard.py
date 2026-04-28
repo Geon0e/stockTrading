@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import re
 import signal
 import subprocess
 import time
@@ -113,6 +114,11 @@ def _read_env() -> dict:
             k, _, v = line.partition("=")
             result[k.strip()] = v.strip()
     return result
+
+
+def _clean_codes(raw: str) -> str:
+    """콤마·줄바꿈·공백 혼합 입력을 콤마 구분 종목코드 문자열로 정규화."""
+    return ",".join(c.strip() for c in re.split(r"[,\n\r]+", str(raw)) if c.strip())
 
 
 def _write_env_key(key: str, value: str) -> None:
@@ -347,12 +353,12 @@ def api_set_config():
         changes["order_quantity"] = val
 
     if "watchlist" in data:
-        cleaned = ",".join(c.strip() for c in str(data["watchlist"]).split(",") if c.strip())
+        cleaned = _clean_codes(data["watchlist"])
         _write_env_key(f"WATCHLIST_{mode.upper()}", cleaned)
         changes["watchlist"] = cleaned
 
     if "exclude_list" in data:
-        cleaned = ",".join(c.strip() for c in str(data["exclude_list"]).split(",") if c.strip())
+        cleaned = _clean_codes(data["exclude_list"])
         _write_env_key(f"EXCLUDE_LIST_{mode.upper()}", cleaned)
         changes["exclude_list"] = cleaned
 
@@ -406,12 +412,12 @@ def api_save_restart():
             changes["주문 수량"] = f"{val}주"
 
     if "watchlist" in cfg:
-        cleaned = ",".join(c.strip() for c in str(cfg["watchlist"]).split(",") if c.strip())
+        cleaned = _clean_codes(cfg["watchlist"])
         _write_env_key(f"WATCHLIST_{mode.upper()}", cleaned)
         changes["스캔 종목"] = cleaned if cleaned else "자동 스캔"
 
     if "exclude_list" in cfg:
-        cleaned = ",".join(c.strip() for c in str(cfg["exclude_list"]).split(",") if c.strip())
+        cleaned = _clean_codes(cfg["exclude_list"])
         _write_env_key(f"EXCLUDE_LIST_{mode.upper()}", cleaned)
         changes["제외 종목"] = cleaned if cleaned else "없음"
 
