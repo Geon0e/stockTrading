@@ -188,7 +188,6 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
             exec_confirmed_at=exec_time,
         )
         holdings[code] = {"qty": quantity, "avg_price": exec_price}
-        _traded_today(ctx).add(code)
         cost = int(float(exec_price) * quantity)
         deduct_daily_budget(ctx, cost)
         bought += 1
