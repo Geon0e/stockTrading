@@ -121,9 +121,15 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
         signal_time = candidate.get("signal_detected_at", datetime.datetime.now().isoformat())
         price = int(candidate["price"])
 
-        if code in holdings or code in _traded_today(ctx):
-            logger.debug(f"[실전] 당일 거래 종목 스킵: {code}")
+        if code in _traded_today(ctx):
             continue
+
+        if code in holdings:
+            avg_p = float(holdings[code].get("avg_price") or 0)
+            if avg_p <= 0 or price >= avg_p:
+                logger.debug(f"[실전] 보유 중 수익 종목 추가매수 스킵: {code} | 매입가: {avg_p:,.0f}원 | 현재가: {price:,}원")
+                continue
+            # 현재가 < 매입가(손실 중) → 물타기 허용
 
         # 예산 초과 종목 스킵
         if price > per_position:
