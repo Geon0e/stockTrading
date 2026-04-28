@@ -413,6 +413,7 @@ code { color: #60a5fa; font-size: 11px; }
 <div class="mob-tabs">
   <button class="mob-tab active" id="mobTabLog"       onclick="switchMobTab('log')">📋 로그</button>
   <button class="mob-tab"        id="mobTabPortfolio" onclick="switchMobTab('portfolio')">📊 보유</button>
+  <button class="mob-tab"        id="mobTabDaily"     onclick="switchMobTab('daily')">🗓 금일</button>
   <button class="mob-tab"        id="mobTabTrades"    onclick="switchMobTab('trades')">💼 거래내역</button>
   <button class="mob-tab"        id="mobTabSettings"  onclick="switchMobTab('settings')">⚙️ 설정</button>
   <button class="mob-tab"        id="mobTabHistory"   onclick="switchMobTab('history')">📜 히스토리</button>
@@ -441,6 +442,7 @@ code { color: #60a5fa; font-size: 11px; }
     <div class="pane-hd" style="padding: 0 14px 0 0;">
       <div class="right-tabs">
         <button class="right-tab active" id="rtabPortfolio" onclick="switchRightTab('portfolio')">📊 포트폴리오</button>
+        <button class="right-tab"        id="rtabDaily"     onclick="switchRightTab('daily')">🗓 금일 현황</button>
         <button class="right-tab"        id="rtabTrades"    onclick="switchRightTab('trades')">💼 거래내역</button>
         <button class="right-tab"        id="rtabSettings"  onclick="switchRightTab('settings')">⚙️ 설정</button>
         <button class="right-tab"        id="rtabHistory"   onclick="switchRightTab('history')">📜 히스토리</button>
@@ -458,6 +460,52 @@ code { color: #60a5fa; font-size: 11px; }
         </thead>
         <tbody id="pfBody"></tbody>
       </table>
+    </div>
+
+    <!-- 금일 현황 -->
+    <div class="settings-wrap" id="dailyPanel" style="display:none">
+      <div class="cfg-section">
+        <div class="cfg-title" style="display:flex;align-items:center;gap:8px">
+          <span>금일 현황</span>
+          <span id="dailyModeBadge" class="cfg-mode-badge mock">MOCK</span>
+          <span id="dailyDate" style="font-size:11px;color:#444;font-weight:normal;margin-left:4px"></span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
+
+          <div style="background:#0f0f0f;border:1px solid #1e1e1e;border-radius:6px;padding:14px">
+            <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">총 예산</div>
+            <div id="dBudgetTotal" style="font-size:22px;font-weight:bold;color:#60a5fa">—</div>
+          </div>
+
+          <div style="background:#0f0f0f;border:1px solid #1a2a1a;border-radius:6px;padding:14px">
+            <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">추가 매수 가능</div>
+            <div id="dBudgetRemaining" style="font-size:22px;font-weight:bold;color:#22c55e">—</div>
+          </div>
+
+          <div style="background:#0f0f0f;border:1px solid #2a1a1a;border-radius:6px;padding:14px">
+            <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">사용 금액</div>
+            <div id="dBuyAmount" style="font-size:22px;font-weight:bold;color:#f87171">—</div>
+            <div id="dBuyCount" style="font-size:11px;color:#555;margin-top:4px"></div>
+          </div>
+
+          <div style="background:#0f0f0f;border:1px solid #14293d;border-radius:6px;padding:14px">
+            <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">익절 수익</div>
+            <div id="dTpAmount" style="font-size:22px;font-weight:bold;color:#4ade80">—</div>
+            <div id="dTpCount" style="font-size:11px;color:#555;margin-top:4px"></div>
+          </div>
+
+        </div>
+
+        <div style="margin-top:14px;background:#0f0f0f;border:1px solid #1e1e1e;border-radius:6px;padding:12px">
+          <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">예산 사용률</div>
+          <div style="background:#1a1a1a;border-radius:4px;height:8px;overflow:hidden">
+            <div id="dBudgetBar" style="height:100%;background:#3b82f6;border-radius:4px;transition:width 0.4s;width:0%"></div>
+          </div>
+          <div id="dBudgetPct" style="font-size:11px;color:#555;margin-top:6px;text-align:right"></div>
+        </div>
+
+      </div>
     </div>
 
     <!-- 거래내역 -->
@@ -776,6 +824,7 @@ function setActiveMode(mode) {
     loadStrategy();
   }
   if (activeRightTab === 'history') loadSettingsHistory();
+  if (activeRightTab === 'daily')   loadDailyStatus();
 }
 
 // ── 자동스크롤 ─────────────────────────────────────
@@ -963,11 +1012,13 @@ let activeRightTab = 'portfolio';
 function switchRightTab(tab) {
   activeRightTab = tab;
   document.getElementById('portfolioPanel').style.display = tab === 'portfolio' ? '' : 'none';
+  document.getElementById('dailyPanel').style.display     = tab === 'daily'     ? '' : 'none';
   document.getElementById('tradesPanel').style.display    = tab === 'trades'    ? '' : 'none';
   document.getElementById('settingsPanel').style.display  = tab === 'settings'  ? '' : 'none';
   document.getElementById('historyPanel').style.display   = tab === 'history'   ? '' : 'none';
   document.getElementById('tradesRefreshBtn').style.display = (tab === 'portfolio' || tab === 'trades') ? '' : 'none';
   document.getElementById('rtabPortfolio').classList.toggle('active', tab === 'portfolio');
+  document.getElementById('rtabDaily').classList.toggle('active',     tab === 'daily');
   document.getElementById('rtabTrades').classList.toggle('active',    tab === 'trades');
   document.getElementById('rtabSettings').classList.toggle('active',  tab === 'settings');
   document.getElementById('rtabHistory').classList.toggle('active',   tab === 'history');
@@ -975,11 +1026,38 @@ function switchRightTab(tab) {
   if (tab === 'portfolio') loadPortfolio();
   if (tab === 'trades')    loadTrades();
   if (tab === 'history')   loadSettingsHistory();
+  if (tab === 'daily')     loadDailyStatus();
 }
 
 function refreshRight() {
   if (activeRightTab === 'portfolio') loadPortfolio();
   else if (activeRightTab === 'trades') loadTrades();
+  else if (activeRightTab === 'daily') loadDailyStatus();
+}
+
+// ── 금일 현황 ──────────────────────────────────────
+function loadDailyStatus() {
+  fetch('/api/daily-status?mode=' + activeMode).then(r => r.json()).then(d => {
+    const fmt = n => typeof n === 'number' ? n.toLocaleString('ko-KR') + '원' : '—';
+    document.getElementById('dBudgetTotal').textContent     = fmt(d.budget_total);
+    document.getElementById('dBudgetRemaining').textContent = fmt(d.budget_remaining);
+    document.getElementById('dBuyAmount').textContent       = fmt(d.buy_amount);
+    document.getElementById('dBuyCount').textContent        = d.buy_count != null ? `${d.buy_count}건 매수` : '';
+    document.getElementById('dTpAmount').textContent        = fmt(d.take_profit_amount);
+    document.getElementById('dTpCount').textContent         = d.take_profit_count != null ? `${d.take_profit_count}건 익절` : '';
+
+    const total = d.budget_total || 0;
+    const used  = d.buy_amount   || 0;
+    const pct   = total > 0 ? Math.min(100, Math.round(used / total * 100)) : 0;
+    document.getElementById('dBudgetBar').style.width = pct + '%';
+    document.getElementById('dBudgetBar').style.background = pct >= 90 ? '#ef4444' : pct >= 60 ? '#f59e0b' : '#3b82f6';
+    document.getElementById('dBudgetPct').textContent = pct + '% 사용';
+
+    const badge = document.getElementById('dailyModeBadge');
+    badge.textContent = activeMode.toUpperCase();
+    badge.className = 'cfg-mode-badge ' + activeMode;
+    document.getElementById('dailyDate').textContent = d.date || '';
+  }).catch(() => {});
 }
 
 // ── 포트폴리오 ──────────────────────────────────────
@@ -1220,7 +1298,7 @@ function loadStrategy() {
 function switchMobTab(tab) {
   const logPane    = document.querySelector('.pane-left');
   const tradesPane = document.querySelector('.pane-right');
-  ['mobTabLog','mobTabPortfolio','mobTabTrades','mobTabSettings','mobTabHistory'].forEach(id =>
+  ['mobTabLog','mobTabPortfolio','mobTabDaily','mobTabTrades','mobTabSettings','mobTabHistory'].forEach(id =>
     document.getElementById(id).classList.remove('active'));
 
   if (tab === 'log') {
@@ -1231,15 +1309,18 @@ function switchMobTab(tab) {
     logPane.classList.add('mob-hidden');
     tradesPane.classList.add('mob-active');
     document.getElementById('mobTabPortfolio').classList.toggle('active', tab === 'portfolio');
+    document.getElementById('mobTabDaily').classList.toggle('active',     tab === 'daily');
     document.getElementById('mobTabTrades').classList.toggle('active',    tab === 'trades');
     document.getElementById('mobTabSettings').classList.toggle('active',  tab === 'settings');
     document.getElementById('mobTabHistory').classList.toggle('active',   tab === 'history');
     document.getElementById('portfolioPanel').style.display = tab === 'portfolio' ? '' : 'none';
+    document.getElementById('dailyPanel').style.display     = tab === 'daily'     ? '' : 'none';
     document.getElementById('tradesPanel').style.display    = tab === 'trades'    ? '' : 'none';
     document.getElementById('settingsPanel').style.display  = tab === 'settings'  ? '' : 'none';
     document.getElementById('historyPanel').style.display   = tab === 'history'   ? '' : 'none';
     document.getElementById('tradesRefreshBtn').style.display = (tab === 'portfolio' || tab === 'trades') ? '' : 'none';
     if (tab === 'portfolio') loadPortfolio();
+    if (tab === 'daily')     loadDailyStatus();
     if (tab === 'trades')    loadTrades();
     if (tab === 'settings')  { loadSettings(); loadStrategy(); }
     if (tab === 'history')   loadSettingsHistory();
@@ -1258,6 +1339,7 @@ setInterval(loadStatus,    5000);
 setInterval(loadPortfolio, 30000);
 setInterval(loadTrades,    30000);
 setInterval(loadSummary,   30000);
+setInterval(() => { if (activeRightTab === 'daily') loadDailyStatus(); }, 30000);
 </script>
 </body>
 </html>
