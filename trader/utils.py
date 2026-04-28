@@ -15,13 +15,9 @@ def traded_today(ctx: dict) -> set:
 
 
 def _rebuild_daily_from_trades(mode: str, today: datetime.date, budget: int) -> dict:
-    """trades_{mode}.jsonl에서 당일 매수/매도 내역을 읽어 예산 현황 재계산.
-
-    잔여예산 = 설정예산 - 매수합계 + 전체매도합계 (손절 포함)
-    익절 건수/금액은 별도 표시용으로만 집계.
-    """
+    """trades_{mode}.jsonl에서 당일 매수/매도 내역을 읽어 예산 현황 재계산."""
     today_str = str(today)
-    buy_count = buy_amount = sell_amount = tp_count = tp_amount = 0
+    buy_count = buy_amount = sell_amount = profit_amount = tp_count = tp_amount = 0
     path = _LOG_DIR / f"trades_{mode}.jsonl"
     if path.exists():
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -41,6 +37,7 @@ def _rebuild_daily_from_trades(mode: str, today: datetime.date, budget: int) -> 
                     buy_amount += amount
                 elif action == "SELL":
                     sell_amount += amount
+                    profit_amount += int(r.get("profit_amount") or 0)
                     if "익절" in str(r.get("signal_type", "")):
                         tp_count += 1
                         tp_amount += amount
@@ -51,6 +48,8 @@ def _rebuild_daily_from_trades(mode: str, today: datetime.date, budget: int) -> 
         "daily_budget_remaining":   max(0, budget - buy_amount + sell_amount),
         "daily_buy_count":          buy_count,
         "daily_buy_amount":         buy_amount,
+        "daily_sell_amount":        sell_amount,
+        "daily_profit_amount":      profit_amount,
         "daily_take_profit_count":  tp_count,
         "daily_take_profit_amount": tp_amount,
     }
@@ -60,14 +59,14 @@ def init_daily_from_api(ctx: dict, executions: list) -> None:
     """KIS API 체결 내역으로 당일 예산 현황 초기화 (real 모드 전용).
 
     sll_buy_dvsn_cd: '02'=매수, '01'=매도
-    매수금액은 API 기준, 익절 세부 통계는 로컬 로그 보완.
+    pchs_avg_pric: 매입평균가 (수익금액 계산용)
     """
     import logging
     _logger = logging.getLogger(__name__)
     config = ctx["config"]
     budget = config.real_budget if config.mode == "real" else config.mock_budget
     today = datetime.date.today()
-    buy_count = buy_amount = sell_count = sell_amount = 0
+    buy_count = buy_amount = sell_count = sell_amount = profit_amount = 0
     for item in executions:
         side  = item.get("sll_buy_dvsn_cd", "")
         qty   = int(item.get("tot_ccld_qty") or "0")
@@ -76,15 +75,19 @@ def init_daily_from_api(ctx: dict, executions: list) -> None:
         if side == "02":    # 매수
             buy_count  += 1
             buy_amount += amount
-        elif side == "01":  # 매도 (전체 — 손절 포함)
+        elif side == "01":  # 매도
             sell_count  += 1
             sell_amount += amount
-    # 익절 세부 통계(건수/금액)는 signal_type이 필요해 로컬 로그에서 보완
+            pchs_avg = float(item.get("pchs_avg_pric") or "0")
+            if pchs_avg > 0:
+                profit_amount += int((price - pchs_avg) * qty)
     local = _rebuild_daily_from_trades(config.mode, today, budget)
     ctx["daily_budget_total"]       = budget
     ctx["daily_budget_remaining"]   = max(0, budget - buy_amount + sell_amount)
     ctx["daily_buy_count"]          = buy_count
     ctx["daily_buy_amount"]         = buy_amount
+    ctx["daily_sell_amount"]        = sell_amount
+    ctx["daily_profit_amount"]      = profit_amount
     ctx["daily_take_profit_count"]  = local["daily_take_profit_count"]
     ctx["daily_take_profit_amount"] = local["daily_take_profit_amount"]
     ctx["daily_budget_date"]        = today
@@ -92,7 +95,7 @@ def init_daily_from_api(ctx: dict, executions: list) -> None:
     _logger.info(
         f"[금일현황] KIS API 기준 초기화 | "
         f"매수 {buy_count}건 {buy_amount:,}원 | 매도 {sell_count}건 {sell_amount:,}원 | "
-        f"잔여예산 {ctx['daily_budget_remaining']:,}원"
+        f"수익 {profit_amount:+,}원 | 잔여예산 {ctx['daily_budget_remaining']:,}원"
     )
 
 
@@ -125,13 +128,16 @@ def deduct_daily_budget(ctx: dict, amount: int) -> None:
     _save_daily_status(ctx)
 
 
-def add_daily_budget(ctx: dict, amount: int, is_take_profit: bool = False) -> None:
-    """매도 시 예산 환원. is_take_profit=True면 익절 통계도 업데이트."""
+def add_daily_budget(ctx: dict, amount: int, is_take_profit: bool = False,
+                     profit_amount: int = 0) -> None:
+    """매도 시 예산 환원. profit_amount는 당일 실현수익에 가산."""
     lock = ctx.get("budget_lock")
     with (lock if lock else _NullLock()):
         _ensure_daily_budget(ctx)
         amount = int(amount)
-        ctx["daily_budget_remaining"] += amount
+        ctx["daily_budget_remaining"]            += amount
+        ctx["daily_sell_amount"]                 = ctx.get("daily_sell_amount", 0) + amount
+        ctx["daily_profit_amount"]               = ctx.get("daily_profit_amount", 0) + int(profit_amount)
         if is_take_profit:
             ctx["daily_take_profit_amount"] += amount
             ctx["daily_take_profit_count"]  += 1
@@ -150,6 +156,8 @@ def _save_daily_status(ctx: dict) -> None:
             "budget_remaining":      ctx.get("daily_budget_remaining", 0),
             "buy_count":             ctx.get("daily_buy_count", 0),
             "buy_amount":            ctx.get("daily_buy_amount", 0),
+            "sell_amount":           ctx.get("daily_sell_amount", 0),
+            "profit_amount":         ctx.get("daily_profit_amount", 0),
             "take_profit_count":     ctx.get("daily_take_profit_count", 0),
             "take_profit_amount":    ctx.get("daily_take_profit_amount", 0),
         }

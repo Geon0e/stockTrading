@@ -18,7 +18,7 @@ class TradeLogger:
     def log(self, action: str, stock_code: str, quantity: int, result: dict,
             signal_type: str = "", signal_detected_at: str = "",
             exec_price: str = "", exec_confirmed_at: str = "",
-            profit_rate=None) -> None:
+            profit_rate=None, profit_amount: int = None) -> None:
         now = datetime.datetime.now().isoformat()
         name = get_stock_name(stock_code)
         entry = {

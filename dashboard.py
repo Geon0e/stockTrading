@@ -669,7 +669,7 @@ def api_daily_status():
     # 거래 내역에서 당일 현황 재계산
     env = _read_env()
     budget = int(env.get("MOCK_BUDGET", "500000")) if mode == "mock" else int(env.get("REAL_BUDGET", "500000"))
-    buy_count = buy_amount = tp_count = tp_amount = 0
+    buy_count = buy_amount = sell_amount = profit_amount = tp_count = tp_amount = 0
     for r in _load_trades(mode):
         ts = r.get("timestamp", "")
         if not ts.startswith(today_str):
@@ -680,15 +680,19 @@ def api_daily_status():
         if r.get("action") == "BUY":
             buy_count += 1
             buy_amount += amount
-        elif r.get("action") == "SELL" and "익절" in str(r.get("signal_type", "")):
-            tp_count += 1
-            tp_amount += amount
+        elif r.get("action") == "SELL":
+            sell_amount += amount
+            profit_amount += int(r.get("profit_amount") or 0)
+            if "익절" in str(r.get("signal_type", "")):
+                tp_count += 1
+                tp_amount += amount
 
     data = {
         "date": today_str, "mode": mode,
         "budget_total": budget,
-        "budget_remaining": max(0, budget - buy_amount + tp_amount),
+        "budget_remaining": max(0, budget - buy_amount + sell_amount),
         "buy_count": buy_count, "buy_amount": buy_amount,
+        "sell_amount": sell_amount, "profit_amount": profit_amount,
         "take_profit_count": tp_count, "take_profit_amount": tp_amount,
     }
     # 재계산 결과를 캐시 파일로 저장

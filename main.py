@@ -128,7 +128,8 @@ def run_take_profit_cycle(ctx: dict) -> None:
                                         exec_price=str(limit_price), profit_rate=actual_profit_pct)
                 _traded_today(ctx).add(code)
                 proceeds = limit_price * qty
-                add_daily_budget(ctx, proceeds, is_take_profit=True)
+                add_daily_budget(ctx, proceeds, is_take_profit=True,
+                                 profit_amount=int((limit_price - avg_price) * qty))
                 _notify_take_profit_sell(ctx, code, qty, actual_profit_pct)
                 logger.info(f"익절 매도: {code} | 매입가 {avg_price:,.0f}원 | 지정가 {limit_price:,}원 | 수익률 {actual_profit_pct:+.2f}% | 당일 잔여예산: {get_daily_budget(ctx):,}원")
 
@@ -173,7 +174,8 @@ def _run_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> int:
                 result = ctx["order_client"].sell(stock_code, qty, token)
                 ctx["trade_logger"].log("SELL", stock_code, qty, result, signal_type="손절")
                 del holdings[stock_code]
-                add_daily_budget(ctx, int(current_price * qty))
+                add_daily_budget(ctx, int(current_price * qty),
+                                 profit_amount=int((current_price - avg_price) * qty))
                 _notify_sell(ctx, stock_code, qty, prices[-1], signal_type="손절")
                 logger.info(f"국내 손절 매도: {label} | 매입가: {avg_price:,.0f} | 현재가: {current_price:,.0f} | 수익률: {profit_pct:.2f}%")
                 continue
@@ -182,7 +184,8 @@ def _run_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> int:
             result = ctx["order_client"].sell(stock_code, qty, token)
             ctx["trade_logger"].log("SELL", stock_code, qty, result)
             del holdings[stock_code]
-            add_daily_budget(ctx, int(current_price * qty))
+            add_daily_budget(ctx, int(current_price * qty),
+                             profit_amount=int((current_price - avg_price) * qty))
             _notify_sell(ctx, stock_code, qty, prices[-1])
             logger.info(f"국내 매도 완료: {label}")
 
@@ -292,7 +295,8 @@ def _run_nasdaq_cycle(ctx: dict, token: str) -> int:
                 result = ctx["order_client"].sell_overseas(symbol, info["exchange"], info["qty"], token)
                 ctx["trade_logger"].log("SELL", symbol, info["qty"], result, signal_type="손절")
                 del holdings[symbol]
-                add_daily_budget(ctx, int(current_price * info["qty"]))
+                add_daily_budget(ctx, int(current_price * info["qty"]),
+                                 profit_amount=int((current_price - avg_price) * info["qty"]))
                 _notify_sell(ctx, symbol, info["qty"], prices[-1], signal_type="손절", market="US")
                 logger.info(f"해외 손절 매도: {label} | 매입가: ${avg_price:.2f} | 현재가: ${current_price:.2f} | 수익률: {profit_pct:.2f}%")
                 continue
@@ -301,7 +305,8 @@ def _run_nasdaq_cycle(ctx: dict, token: str) -> int:
             result = ctx["order_client"].sell_overseas(symbol, info["exchange"], info["qty"], token)
             ctx["trade_logger"].log("SELL", symbol, info["qty"], result)
             del holdings[symbol]
-            add_daily_budget(ctx, int(current_price * info["qty"]))
+            add_daily_budget(ctx, int(current_price * info["qty"]),
+                             profit_amount=int((current_price - avg_price) * info["qty"]))
             _notify_sell(ctx, symbol, info["qty"], prices[-1])
             logger.info(f"해외 매도 완료: {label}")
 
@@ -433,6 +438,8 @@ def run_stop_loss_check(ctx: dict) -> None:
                 ctx["trade_logger"].log("SELL", stock_code, qty, result, signal_type="손절",
                                         exec_price=str(limit_price), profit_rate=actual_profit_pct)
                 _traded_today(ctx).add(stock_code)
+                add_daily_budget(ctx, int(limit_price * qty),
+                                 profit_amount=int((limit_price - avg_price) * qty))
                 _notify_sell(ctx, stock_code, qty, current_price, signal_type="손절")
                 logger.info(
                     f"손절 매도: {label} | 매입가: {avg_price:,.0f}원 | "

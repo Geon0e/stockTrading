@@ -493,9 +493,14 @@ code { color: #60a5fa; font-size: 11px; }
           </div>
 
           <div style="background:#0f0f0f;border:1px solid #14293d;border-radius:6px;padding:14px">
-            <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">익절 수익</div>
-            <div id="dTpAmount" style="font-size:22px;font-weight:bold;color:#4ade80">—</div>
+            <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">매도 금액</div>
+            <div id="dSellAmount" style="font-size:22px;font-weight:bold;color:#4ade80">—</div>
             <div id="dTpCount" style="font-size:11px;color:#555;margin-top:4px"></div>
+          </div>
+
+          <div style="background:#0f0f0f;border:1px solid #1a2a1a;border-radius:6px;padding:14px">
+            <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">당일 수익</div>
+            <div id="dProfitAmount" style="font-size:22px;font-weight:bold;color:#4ade80">—</div>
           </div>
 
         </div>
@@ -1111,8 +1116,16 @@ function loadDailyStatus() {
     document.getElementById('dBudgetRemaining').textContent = fmt(d.budget_remaining);
     document.getElementById('dBuyAmount').textContent       = fmt(d.buy_amount);
     document.getElementById('dBuyCount').textContent        = d.buy_count != null ? `${d.buy_count}건 매수` : '';
-    document.getElementById('dTpAmount').textContent        = fmt(d.take_profit_amount);
+    document.getElementById('dSellAmount').textContent      = fmt(d.sell_amount);
     document.getElementById('dTpCount').textContent         = d.take_profit_count != null ? `${d.take_profit_count}건 익절` : '';
+    const profit = d.profit_amount;
+    const profitEl = document.getElementById('dProfitAmount');
+    if (typeof profit === 'number') {
+      profitEl.textContent = (profit >= 0 ? '+' : '') + profit.toLocaleString('ko-KR') + '원';
+      profitEl.style.color = profit >= 0 ? '#4ade80' : '#f87171';
+    } else {
+      profitEl.textContent = '—';
+    }
 
     const total = d.budget_total || 0;
     const used  = d.buy_amount   || 0;
