@@ -1264,7 +1264,7 @@ function loadSettings() {
       usdRow.style.display = 'none';
     }
     document.getElementById('cfgMaxPositions').value = d.max_positions ?? '';
-    document.getElementById('cfgOrderQty').value = d.order_quantity ?? '';
+    document.getElementById('cfgOrderQty').value = d.order_quantity ?? 0;
     document.getElementById('cfgWatchlist').value = d.watchlist ?? '';
     document.getElementById('cfgExcludeList').value = d.exclude_list ?? '';
     document.getElementById('cfgScanAll').checked = !!d.scan_all_stocks;
