@@ -31,9 +31,34 @@ app.config.update(
 
 _BASE = Path(__file__).parent
 
-# ── 관리자 자격증명: 환경변수 우선, 없으면 소스 기본값 ────────────────────────
-_ADMIN_USER = os.getenv("DASHBOARD_ADMIN_USER", "admin")
-_ADMIN_PASS = os.getenv("DASHBOARD_ADMIN_PASS", "cjswotl")
+# ── .env 파일 동적 읽기 (재시작 없이 자격증명 변경 반영) ────────────────────
+def _read_dotenv() -> dict:
+    """프로세스 환경변수를 덮어쓰지 않고 .env 파일을 파싱해 반환."""
+    env: dict = {}
+    env_path = _BASE / ".env"
+    if not env_path.exists():
+        return env
+    try:
+        for line in env_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            k = k.strip()
+            v = v.strip().strip('"').strip("'")
+            if k:
+                env[k] = v
+    except Exception:
+        pass
+    return env
+
+
+def _get_admin_creds() -> tuple[str, str]:
+    """로그인 시마다 호출 — .env 변경이 재시작 없이 반영된다."""
+    dotenv = _read_dotenv()
+    user = dotenv.get("DASHBOARD_ADMIN_USER") or os.getenv("DASHBOARD_ADMIN_USER") or "admin"
+    passwd = dotenv.get("DASHBOARD_ADMIN_PASS") or os.getenv("DASHBOARD_ADMIN_PASS") or "cjswotl"
+    return user, passwd
 
 # ── 로그인 실패 제한 (IP 기반, 인메모리) ──────────────────────────────────
 _LOGIN_ATTEMPTS: dict = {}   # {ip: {"count": int, "blocked_until": float}}
@@ -116,9 +141,10 @@ def login():
             return render_template("login.html", error=error)
         u = request.form.get("username", "").strip()
         p = request.form.get("password", "").strip()
+        admin_user, admin_pass = _get_admin_creds()
         # 타이밍 공격 방지: 항상 두 비교를 모두 실행
-        user_ok = hmac.compare_digest(u, _ADMIN_USER)
-        pass_ok = hmac.compare_digest(p, _ADMIN_PASS)
+        user_ok = hmac.compare_digest(u, admin_user)
+        pass_ok = hmac.compare_digest(p, admin_pass)
         if user_ok and pass_ok:
             session["role"] = "admin"
             session.permanent = True
