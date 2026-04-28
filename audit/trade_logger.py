@@ -39,6 +39,8 @@ class TradeLogger:
         }
         if profit_rate is not None:
             entry["profit_rate_pct"] = float(profit_rate)
+        if profit_amount is not None:
+            entry["profit_amount"] = int(profit_amount)
         with open(self._log_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         label = f"{stock_code}({name})" if name else stock_code

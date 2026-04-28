@@ -661,7 +661,7 @@ def api_daily_status():
     if status_path.exists():
         try:
             cached = json.loads(status_path.read_text(encoding="utf-8"))
-            if cached.get("date") == today_str:
+            if cached.get("date") == today_str and "profit_amount" in cached:
                 return jsonify(cached)
         except Exception:
             pass
@@ -682,7 +682,11 @@ def api_daily_status():
             buy_amount += amount
         elif r.get("action") == "SELL":
             sell_amount += amount
-            profit_amount += int(r.get("profit_amount") or 0)
+            if r.get("profit_amount") is not None:
+                profit_amount += int(r["profit_amount"])
+            elif r.get("profit_rate_pct") is not None and amount > 0:
+                rate = float(r["profit_rate_pct"])
+                profit_amount += int(amount * rate / (100 + rate))
             if "익절" in str(r.get("signal_type", "")):
                 tp_count += 1
                 tp_amount += amount

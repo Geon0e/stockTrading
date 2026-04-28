@@ -37,7 +37,11 @@ def _rebuild_daily_from_trades(mode: str, today: datetime.date, budget: int) -> 
                     buy_amount += amount
                 elif action == "SELL":
                     sell_amount += amount
-                    profit_amount += int(r.get("profit_amount") or 0)
+                    if r.get("profit_amount") is not None:
+                        profit_amount += int(r["profit_amount"])
+                    elif r.get("profit_rate_pct") is not None and amount > 0:
+                        rate = float(r["profit_rate_pct"])
+                        profit_amount += int(amount * rate / (100 + rate))
                     if "익절" in str(r.get("signal_type", "")):
                         tp_count += 1
                         tp_amount += amount
@@ -66,7 +70,7 @@ def init_daily_from_api(ctx: dict, executions: list) -> None:
     config = ctx["config"]
     budget = config.real_budget if config.mode == "real" else config.mock_budget
     today = datetime.date.today()
-    buy_count = buy_amount = sell_count = sell_amount = profit_amount = 0
+    buy_count = buy_amount = sell_count = sell_amount = 0
     for item in executions:
         side  = item.get("sll_buy_dvsn_cd", "")
         qty   = int(item.get("tot_ccld_qty") or "0")
@@ -78,16 +82,14 @@ def init_daily_from_api(ctx: dict, executions: list) -> None:
         elif side == "01":  # 매도
             sell_count  += 1
             sell_amount += amount
-            pchs_avg = float(item.get("pchs_avg_pric") or "0")
-            if pchs_avg > 0:
-                profit_amount += int((price - pchs_avg) * qty)
+    # 수익금액은 로컬 트레이드 로그에서 계산 (profit_amount 필드 또는 profit_rate_pct 역산)
     local = _rebuild_daily_from_trades(config.mode, today, budget)
     ctx["daily_budget_total"]       = budget
     ctx["daily_budget_remaining"]   = max(0, budget - buy_amount + sell_amount)
     ctx["daily_buy_count"]          = buy_count
     ctx["daily_buy_amount"]         = buy_amount
     ctx["daily_sell_amount"]        = sell_amount
-    ctx["daily_profit_amount"]      = profit_amount
+    ctx["daily_profit_amount"]      = local["daily_profit_amount"]
     ctx["daily_take_profit_count"]  = local["daily_take_profit_count"]
     ctx["daily_take_profit_amount"] = local["daily_take_profit_amount"]
     ctx["daily_budget_date"]        = today
@@ -95,7 +97,7 @@ def init_daily_from_api(ctx: dict, executions: list) -> None:
     _logger.info(
         f"[금일현황] KIS API 기준 초기화 | "
         f"매수 {buy_count}건 {buy_amount:,}원 | 매도 {sell_count}건 {sell_amount:,}원 | "
-        f"수익 {profit_amount:+,}원 | 잔여예산 {ctx['daily_budget_remaining']:,}원"
+        f"수익 {local['daily_profit_amount']:+,}원 | 잔여예산 {ctx['daily_budget_remaining']:,}원"
     )
 
 
