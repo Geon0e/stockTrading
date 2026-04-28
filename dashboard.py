@@ -521,8 +521,26 @@ def api_settings_history():
 @app.route("/api/trades")
 def api_trades():
     mode = _valid_mode(request.args.get("mode", "mock"))
+    date = request.args.get("date", "")
     records = _load_trades(mode)
+    if date:
+        records = [r for r in records if (r.get("timestamp") or "").startswith(date)]
+        return jsonify(list(reversed(records)))
     return jsonify(list(reversed(records[-200:])))
+
+
+@app.route("/api/trades/dates")
+def api_trades_dates():
+    mode = _valid_mode(request.args.get("mode", "mock"))
+    records = _load_trades(mode)
+    seen = {}
+    for r in records:
+        ts = r.get("timestamp") or ""
+        d = ts[:10]
+        if d:
+            seen[d] = seen.get(d, 0) + 1
+    dates = sorted(seen.keys(), reverse=True)
+    return jsonify([{"date": d, "count": seen[d]} for d in dates])
 
 
 @app.route("/api/portfolio")

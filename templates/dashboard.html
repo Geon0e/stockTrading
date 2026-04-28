@@ -510,15 +510,24 @@ code { color: #60a5fa; font-size: 11px; }
     </div>
 
     <!-- 거래내역 -->
-    <div class="tbl-wrap" id="tradesPanel" style="display:none">
-      <table>
-        <thead>
-          <tr>
-            <th>시각</th><th>구분</th><th>종목</th><th>수량</th><th>체결가</th><th>신호</th>
-          </tr>
-        </thead>
-        <tbody id="tBody"></tbody>
-      </table>
+    <div id="tradesPanel" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+      <div style="background:#0f0f0f;border-bottom:1px solid #1e1e1e;padding:6px 10px;display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <span style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px">날짜</span>
+        <select id="tradesDateFilter" class="cfg-select" style="font-size:12px;padding:3px 7px" onchange="loadTrades()">
+          <option value="">전체 (최근 200건)</option>
+        </select>
+        <span id="tradesDateCount" style="font-size:11px;color:#444"></span>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>시각</th><th>구분</th><th>종목</th><th>수량</th><th>체결가</th><th>신호</th>
+            </tr>
+          </thead>
+          <tbody id="tBody"></tbody>
+        </table>
+      </div>
     </div>
 
     <!-- 설정 -->
@@ -817,7 +826,7 @@ function setActiveMode(mode) {
   hisBadge.textContent = sm; hisBadge.className = 'cfg-mode-badge ' + mode;
 
   // 데이터 새로고침
-  loadTrades();
+  if (activeRightTab === 'trades') loadTradeDates(); else loadTrades();
   loadSummary();
   loadPortfolio();
   if (activeRightTab === 'settings') {
@@ -935,6 +944,22 @@ function loadSummary() {
 }
 
 // ── 거래내역 ───────────────────────────────────────
+function loadTradeDates() {
+  fetch('/api/trades/dates?mode=' + activeMode).then(r => r.json()).then(dates => {
+    const sel = document.getElementById('tradesDateFilter');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">전체 (최근 200건)</option>';
+    dates.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.date;
+      opt.textContent = d.date + '  (' + d.count + '건)';
+      sel.appendChild(opt);
+    });
+    if (cur && dates.find(d => d.date === cur)) sel.value = cur;
+    loadTrades();
+  }).catch(() => {});
+}
+
 function fmtTime(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -959,7 +984,12 @@ function sigClass(s) {
   return 'sg-def';
 }
 function loadTrades() {
-  fetch('/api/trades?mode=' + activeMode).then(r => r.json()).then(records => {
+  const sel = document.getElementById('tradesDateFilter');
+  const date = sel ? sel.value : '';
+  const url = '/api/trades?mode=' + activeMode + (date ? '&date=' + date : '');
+  fetch(url).then(r => r.json()).then(records => {
+    const countEl = document.getElementById('tradesDateCount');
+    if (countEl) countEl.textContent = records.length ? records.length + '건' : '';
     const tb = document.getElementById('tBody');
     tb.innerHTML = '';
     records.forEach(r => {
@@ -1026,14 +1056,14 @@ function switchRightTab(tab) {
   document.getElementById('rtabHistory').classList.toggle('active',   tab === 'history');
   if (tab === 'settings')  { loadSettings(); loadStrategy(); }
   if (tab === 'portfolio') loadPortfolio();
-  if (tab === 'trades')    loadTrades();
+  if (tab === 'trades')    loadTradeDates();
   if (tab === 'history')   loadSettingsHistory();
   if (tab === 'daily')     loadDailyStatus();
 }
 
 function refreshRight() {
   if (activeRightTab === 'portfolio') loadPortfolio();
-  else if (activeRightTab === 'trades') loadTrades();
+  else if (activeRightTab === 'trades') loadTradeDates();
   else if (activeRightTab === 'daily') loadDailyStatus();
 }
 
@@ -1324,7 +1354,7 @@ function switchMobTab(tab) {
     document.getElementById('tradesRefreshBtn').style.display = (tab === 'portfolio' || tab === 'trades') ? '' : 'none';
     if (tab === 'portfolio') loadPortfolio();
     if (tab === 'daily')     loadDailyStatus();
-    if (tab === 'trades')    loadTrades();
+    if (tab === 'trades')    loadTradeDates();
     if (tab === 'settings')  { loadSettings(); loadStrategy(); }
     if (tab === 'history')   loadSettingsHistory();
   }
@@ -1335,7 +1365,7 @@ makeEventSource('mock');
 makeEventSource('real');
 loadStatus();
 loadPortfolio();
-loadTrades();
+loadTradeDates();
 loadSummary();
 loadSettings();
 setInterval(loadStatus,    5000);
