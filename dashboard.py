@@ -1,7 +1,11 @@
 import datetime
+import hashlib
+import hmac
 import json
+import logging
 import os
 import re
+import secrets
 import signal
 import subprocess
 import time
@@ -10,11 +14,61 @@ from pathlib import Path
 from flask import Flask, Response, jsonify, redirect, render_template, request, session, stream_with_context
 
 app = Flask(__name__)
-app.secret_key = os.getenv("DASHBOARD_SECRET_KEY", "stocktrading-secret-key-2026")
+
+# ── 시크릿 키: 환경변수 필수, 없으면 재시작마다 새로 생성 (세션 초기화됨) ─────────
+_secret = os.getenv("DASHBOARD_SECRET_KEY")
+if not _secret:
+    _secret = secrets.token_hex(32)
+    logging.warning("DASHBOARD_SECRET_KEY 환경변수가 없습니다. 재시작 시 세션이 초기화됩니다.")
+app.secret_key = _secret
+
+# ── 세션 보안 설정 ─────────────────────────────────────────────────────────
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    PERMANENT_SESSION_LIFETIME=datetime.timedelta(hours=8),
+)
+
 _BASE = Path(__file__).parent
 
-_ADMIN_USER = "admin"
-_ADMIN_PASS = "cjswotl"
+# ── 관리자 자격증명: 환경변수 우선, 없으면 소스 기본값 ────────────────────────
+_ADMIN_USER = os.getenv("DASHBOARD_ADMIN_USER", "admin")
+_ADMIN_PASS = os.getenv("DASHBOARD_ADMIN_PASS", "cjswotl")
+
+# ── 로그인 실패 제한 (IP 기반, 인메모리) ──────────────────────────────────
+_LOGIN_ATTEMPTS: dict = {}   # {ip: {"count": int, "blocked_until": float}}
+_MAX_ATTEMPTS  = 5
+_BLOCK_SECONDS = 300         # 5분 차단
+
+_security_logger = logging.getLogger("security")
+
+
+def _client_ip() -> str:
+    return request.headers.get("X-Forwarded-For", request.remote_addr or "unknown").split(",")[0].strip()
+
+
+def _check_login_limit(ip: str) -> bool:
+    """True = 허용, False = 차단"""
+    now = time.time()
+    rec = _LOGIN_ATTEMPTS.get(ip, {})
+    if rec.get("blocked_until", 0) > now:
+        return False
+    if rec.get("blocked_until", 0) <= now and rec.get("count", 0) >= _MAX_ATTEMPTS:
+        _LOGIN_ATTEMPTS.pop(ip, None)
+    return True
+
+
+def _record_login_fail(ip: str) -> None:
+    now = time.time()
+    rec = _LOGIN_ATTEMPTS.setdefault(ip, {"count": 0, "blocked_until": 0})
+    rec["count"] += 1
+    if rec["count"] >= _MAX_ATTEMPTS:
+        rec["blocked_until"] = now + _BLOCK_SECONDS
+        _security_logger.warning(f"로그인 {_MAX_ATTEMPTS}회 실패 — IP 차단: {ip} ({_BLOCK_SECONDS}초)")
+
+
+def _record_login_success(ip: str) -> None:
+    _LOGIN_ATTEMPTS.pop(ip, None)
 
 
 # ── 인증 헬퍼 ──────────────────────────────────────────────────────────────
@@ -27,6 +81,15 @@ def _require_admin():
     if _role() != "admin":
         return jsonify({"ok": False, "error": "관리자 권한이 필요합니다"}), 403
     return None
+
+
+@app.after_request
+def _set_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"]        = "DENY"
+    response.headers["X-XSS-Protection"]       = "1; mode=block"
+    response.headers["Referrer-Policy"]        = "same-origin"
+    return response
 
 
 @app.before_request
@@ -47,11 +110,23 @@ def login():
         if request.form.get("guest"):
             session["role"] = "guest"
             return redirect("/")
+        ip = _client_ip()
+        if not _check_login_limit(ip):
+            error = "로그인 시도 횟수 초과 — 잠시 후 다시 시도하세요"
+            return render_template("login.html", error=error)
         u = request.form.get("username", "").strip()
         p = request.form.get("password", "").strip()
-        if u == _ADMIN_USER and p == _ADMIN_PASS:
+        # 타이밍 공격 방지: 항상 두 비교를 모두 실행
+        user_ok = hmac.compare_digest(u, _ADMIN_USER)
+        pass_ok = hmac.compare_digest(p, _ADMIN_PASS)
+        if user_ok and pass_ok:
             session["role"] = "admin"
+            session.permanent = True
+            _record_login_success(ip)
+            _security_logger.info(f"로그인 성공: {ip}")
             return redirect("/")
+        _record_login_fail(ip)
+        _security_logger.warning(f"로그인 실패: {ip} (user={u!r})")
         error = "아이디 또는 비밀번호가 틀렸습니다"
     return render_template("login.html", error=error)
 
@@ -238,7 +313,8 @@ def api_bot_start():
         st = _start_bot(mode)
         return jsonify({"ok": st["running"], "pid": st["pid"], "mode": mode})
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+        logging.exception("봇 시작 오류")
+        return jsonify({"ok": False, "error": "봇 시작 중 오류가 발생했습니다"}), 500
 
 
 @app.route("/api/bot/stop", methods=["POST"])
@@ -288,8 +364,9 @@ def api_bot_deploy():
         lines.append("[deploy] git pull 타임아웃")
         return jsonify({"ok": False, "lines": lines, "error": "timeout"}), 500
     except Exception as e:
-        lines.append(f"[deploy] 오류: {e}")
-        return jsonify({"ok": False, "lines": lines, "error": str(e)}), 500
+        logging.exception("deploy 오류")
+        lines.append(f"[deploy] 오류 발생")
+        return jsonify({"ok": False, "lines": lines, "error": "배포 중 오류가 발생했습니다"}), 500
 
 
 def _write_strategy(config: dict, mode: str = "mock") -> None:
@@ -329,8 +406,9 @@ def api_get_strategy():
     try:
         from strategy.strategy_loader import load_strategy_config
         return jsonify(load_strategy_config(str(path)))
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except Exception:
+        logging.exception("전략 로드 오류")
+        return jsonify({"error": "전략 설정을 불러오는 중 오류가 발생했습니다"}), 500
 
 
 @app.route("/api/strategy", methods=["POST"])
@@ -343,8 +421,9 @@ def api_set_strategy():
     try:
         _write_strategy(strategy_data, mode)
         return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
+    except Exception:
+        logging.exception("전략 저장 오류")
+        return jsonify({"ok": False, "error": "전략 설정 저장 중 오류가 발생했습니다"}), 500
 
 
 @app.route("/api/config")
@@ -386,33 +465,37 @@ def api_set_config():
 
     if "scan_interval_minutes" in data:
         val = int(data["scan_interval_minutes"])
-        if val < 0:
-            return jsonify({"ok": False, "error": "유효하지 않은 값"}), 400
+        if not (0 <= val <= 1440):
+            return jsonify({"ok": False, "error": "스캔 주기는 0~1440분 사이여야 합니다"}), 400
         _write_env_key(f"SCAN_INTERVAL_MINUTES_{mode.upper()}", str(val))
         changes["scan_interval_minutes"] = val
 
     if "budget" in data:
         val = int(data["budget"])
+        if not (0 <= val <= 1_000_000_000):
+            return jsonify({"ok": False, "error": "유효하지 않은 예산 값"}), 400
         key = "MOCK_BUDGET" if mode == "mock" else "REAL_BUDGET"
         _write_env_key(key, str(val))
         changes["budget"] = val
 
     if "usd_budget" in data and mode == "real":
         val = float(data["usd_budget"])
+        if not (0 <= val <= 1_000_000):
+            return jsonify({"ok": False, "error": "유효하지 않은 USD 예산 값"}), 400
         _write_env_key("REAL_USD_BUDGET", str(val))
         changes["usd_budget"] = val
 
     if "max_positions" in data:
         val = int(data["max_positions"])
-        if val < 1:
-            return jsonify({"ok": False, "error": "최대 보유 종목 수는 1 이상이어야 합니다"}), 400
+        if not (1 <= val <= 100):
+            return jsonify({"ok": False, "error": "최대 보유 종목 수는 1~100 사이여야 합니다"}), 400
         _write_env_key(f"MAX_POSITIONS_{mode.upper()}", str(val))
         changes["max_positions"] = val
 
     if "order_quantity" in data:
         val = int(data["order_quantity"])
-        if val < 1:
-            return jsonify({"ok": False, "error": "주문 수량은 1 이상이어야 합니다"}), 400
+        if not (0 <= val <= 100000):
+            return jsonify({"ok": False, "error": "주문 수량은 0~100000 사이여야 합니다"}), 400
         _write_env_key(f"ORDER_QUANTITY_{mode.upper()}", str(val))
         changes["order_quantity"] = val
 

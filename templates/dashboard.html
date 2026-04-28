@@ -1009,6 +1009,12 @@ function loadTradeDates() {
   }).catch(() => {});
 }
 
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 function fmtTime(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -1044,19 +1050,19 @@ function loadTrades() {
     records.forEach(r => {
       const isBuy = r.action === 'BUY';
       const nameMain = r.stock_name
-        ? `<span style="font-size:13px;color:#e0e0e0;font-weight:bold">${r.stock_name}</span>`
-        : `<span style="font-size:13px;color:#60a5fa;font-weight:bold">${r.stock_code}</span>`;
-      const codeSub = r.stock_name ? `<br><span style="color:#444;font-size:10px">${r.stock_code}</span>` : '';
+        ? `<span style="font-size:13px;color:#e0e0e0;font-weight:bold">${esc(r.stock_name)}</span>`
+        : `<span style="font-size:13px;color:#60a5fa;font-weight:bold">${esc(r.stock_code)}</span>`;
+      const codeSub = r.stock_name ? `<br><span style="color:#444;font-size:10px">${esc(r.stock_code)}</span>` : '';
       const profit  = r.profit_rate_pct != null
         ? `<span style="color:${r.profit_rate_pct>=0?'#22c55e':'#ef4444'};font-size:10px;margin-left:4px">${r.profit_rate_pct>=0?'+':''}${r.profit_rate_pct.toFixed(2)}%</span>` : '';
       const tr = document.createElement('tr');
       tr.innerHTML =
         `<td style="color:#444">${fmtTime(r.timestamp)}</td>` +
-        `<td class="${isBuy?'ab':'as'}">${isBuy?'▲':'▼'} ${r.action}</td>` +
+        `<td class="${isBuy?'ab':'as'}">${isBuy?'▲':'▼'} ${esc(r.action)}</td>` +
         `<td>${nameMain}${codeSub}</td>` +
-        `<td>${r.quantity}</td>` +
+        `<td>${Number(r.quantity)}</td>` +
         `<td>${fmtPrice(r.exec_price, r.stock_code)}${profit}</td>` +
-        `<td><span class="sig ${sigClass(r.signal_type)}">${r.signal_type||'—'}</span></td>`;
+        `<td><span class="sig ${sigClass(r.signal_type)}">${esc(r.signal_type)||'—'}</span></td>`;
       tb.appendChild(tr);
     });
   }).catch(() => {});
@@ -1072,10 +1078,11 @@ function appendLog(mode, line) {
   else if (line.includes('[WARNING]') || line.includes('[WARN]')) lvl = 'WARNING';
   else if (line.includes('[DEBUG]')) lvl = 'DEBUG';
   d.classList.add(lvl);
-  d.innerHTML = line
+  const safe = esc(line)
     .replace(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d+)/, '<span class="ts2">$1</span>')
     .replace(/(매수 완료|체결 완료|골든크로스|BUY)/g, '<span class="kw-b">$1</span>')
     .replace(/(매도 완료|손절 매도|익절 매도|SELL)/g, '<span class="kw-s">$1</span>');
+  d.innerHTML = safe;
   wrap.appendChild(d);
   while (wrap.children.length > 600) wrap.removeChild(wrap.firstChild);
   if (autoScroll && activeMode === mode) wrap.scrollTop = wrap.scrollHeight;
@@ -1333,11 +1340,11 @@ function loadSettingsHistory() {
     }
     records.forEach(r => {
       const changes = Object.entries(r.changes)
-        .map(([k, v]) => `${k}: ${v}`)
+        .map(([k, v]) => `${esc(k)}: ${esc(v)}`)
         .join('  ·  ');
       const div = document.createElement('div');
       div.style.cssText = 'font-size:11px;color:#666;border-bottom:1px solid #1a1a1a;padding:4px 0;line-height:1.5';
-      div.innerHTML = `<span style="color:#3f3f3f">${r.timestamp}</span>  <span style="color:#aaa">${changes}</span>`;
+      div.innerHTML = `<span style="color:#3f3f3f">${esc(r.timestamp)}</span>  <span style="color:#aaa">${changes}</span>`;
       container.appendChild(div);
     });
   }).catch(() => {});
