@@ -202,8 +202,28 @@ class OrderClient:
         logger.info(f"[{self._config.mode}] 해외 {side} 완료 | {exchange}:{symbol} {quantity}주 @ {price}")
         return data
 
+    @staticmethod
+    def _round_to_tick(price: int) -> int:
+        """KRX 호가단위에 맞게 내림"""
+        if price < 1_000:
+            tick = 1
+        elif price < 5_000:
+            tick = 5
+        elif price < 10_000:
+            tick = 10
+        elif price < 50_000:
+            tick = 50
+        elif price < 100_000:
+            tick = 100
+        elif price < 500_000:
+            tick = 500
+        else:
+            tick = 1_000
+        return (price // tick) * tick
+
     def _place_order(self, side: str, stock_code: str, quantity: int, tr_id: str, token: str, limit_price: int = None) -> dict:
         if limit_price:
+            limit_price = self._round_to_tick(int(limit_price))
             ord_dvsn = "00"             # 지정가
             ord_unpr = str(limit_price)
         else:
