@@ -16,7 +16,7 @@ from screener.stock_screener import StockScreener
 from audit.trade_logger import TradeLogger
 from trader.real_domestic import run_real_domestic_cycle
 from trader.real_nasdaq import run_real_nasdaq_cycle
-from trader.utils import traded_today as _traded_today, get_daily_budget, deduct_daily_budget, add_daily_budget
+from trader.utils import traded_today as _traded_today, get_daily_budget, deduct_daily_budget, add_daily_budget, init_daily_from_api
 from notifications.telegram_notifier import (
     from_env as telegram_from_env,
     notify_signal as tg_notify_signal,
@@ -509,6 +509,15 @@ def main() -> None:
         "order_lock":          order_lock,
         "budget_lock":         budget_lock,
     }
+
+    # real 모드: 봇 시작 시 KIS API 체결 내역으로 당일 예산 현황 초기화
+    if config.mode == "real":
+        try:
+            _init_token = ctx["token_manager"].get_token()
+            _executions = ctx["order_client"].get_today_ccld(_init_token)
+            init_daily_from_api(ctx, _executions)
+        except Exception as e:
+            logger.warning(f"[금일현황] KIS API 초기화 실패 — 로컬 로그로 폴백: {e}")
 
     interval = config.scan_interval_minutes
     if interval > 0:

@@ -50,6 +50,46 @@ def _rebuild_daily_from_trades(mode: str, today: datetime.date, budget: int) -> 
     }
 
 
+def init_daily_from_api(ctx: dict, executions: list) -> None:
+    """KIS API 체결 내역으로 당일 예산 현황 초기화 (real 모드 전용).
+
+    sll_buy_dvsn_cd: '02'=매수, '01'=매도
+    매수금액은 API 기준, 익절 세부 통계는 로컬 로그 보완.
+    """
+    import logging
+    _logger = logging.getLogger(__name__)
+    config = ctx["config"]
+    budget = config.real_budget if config.mode == "real" else config.mock_budget
+    today = datetime.date.today()
+    buy_count = buy_amount = sell_count = sell_amount = 0
+    for item in executions:
+        side  = item.get("sll_buy_dvsn_cd", "")
+        qty   = int(item.get("tot_ccld_qty") or "0")
+        price = float(item.get("avg_prvs") or item.get("ccld_avg_pric") or "0")
+        amount = int(price * qty)
+        if side == "02":    # 매수
+            buy_count  += 1
+            buy_amount += amount
+        elif side == "01":  # 매도 (전체 — 손절 포함)
+            sell_count  += 1
+            sell_amount += amount
+    # 익절 세부 통계(건수/금액)는 signal_type이 필요해 로컬 로그에서 보완
+    local = _rebuild_daily_from_trades(config.mode, today, budget)
+    ctx["daily_budget_total"]       = budget
+    ctx["daily_budget_remaining"]   = max(0, budget - buy_amount + sell_amount)
+    ctx["daily_buy_count"]          = buy_count
+    ctx["daily_buy_amount"]         = buy_amount
+    ctx["daily_take_profit_count"]  = local["daily_take_profit_count"]
+    ctx["daily_take_profit_amount"] = local["daily_take_profit_amount"]
+    ctx["daily_budget_date"]        = today
+    _save_daily_status(ctx)
+    _logger.info(
+        f"[금일현황] KIS API 기준 초기화 | "
+        f"매수 {buy_count}건 {buy_amount:,}원 | 매도 {sell_count}건 {sell_amount:,}원 | "
+        f"잔여예산 {ctx['daily_budget_remaining']:,}원"
+    )
+
+
 def _ensure_daily_budget(ctx: dict) -> None:
     today = datetime.date.today()
     if ctx.get("daily_budget_date") != today:

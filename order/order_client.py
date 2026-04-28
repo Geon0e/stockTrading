@@ -129,6 +129,39 @@ class OrderClient:
             }
         return result
 
+    def get_today_ccld(self, token: str) -> list:
+        """오늘 전체 체결 내역 조회 (매수+매도). 금일 현황 초기화용."""
+        tr_id = "VTTC8001R" if self._config.mode == "mock" else "TTTC8001R"
+        today = datetime.date.today().strftime("%Y%m%d")
+        params = {
+            "CANO":              self._config.cano,
+            "ACNT_PRDT_CD":      self._config.acnt_prdt_cd,
+            "INQR_STRT_DT":      today,
+            "INQR_END_DT":       today,
+            "SLL_BUY_DVSN_CD":   "00",  # 전체(매수+매도)
+            "INQR_DVSN":         "00",
+            "PDNO":              "",
+            "CCLD_DVSN":         "01",  # 체결만
+            "ORD_GNO_BRNO":      "",
+            "ODNO":              "",
+            "INQR_DVSN_3":       "00",
+            "INQR_DVSN_1":       "",
+            "CTX_AREA_FK100":    "",
+            "CTX_AREA_NK100":    "",
+        }
+        url = f"{self._config.base_url}{_EXECUTION_ENDPOINT}"
+        try:
+            resp = requests.get(url, headers=self._headers(tr_id, token), params=params, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("rt_cd") != "0":
+                logger.warning(f"체결내역 조회 실패: {data.get('msg1')}")
+                return []
+            return data.get("output1", [])
+        except Exception as e:
+            logger.warning(f"체결내역 조회 오류: {e}")
+            return []
+
     def get_execution(self, stock_code: str, order_no: str, token: str,
                       retries: int = 5, delay: float = 1.0) -> Optional[dict]:
         """주문번호로 체결 내역 조회. 미체결이면 None 반환"""
