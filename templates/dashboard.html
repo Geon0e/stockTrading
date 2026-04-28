@@ -466,11 +466,18 @@ code { color: #60a5fa; font-size: 11px; }
     </div>
 
     <!-- 금일 현황 -->
-    <div class="settings-wrap" id="dailyPanel" style="display:none">
+    <div id="dailyPanel" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+      <div style="background:#0f0f0f;border-bottom:1px solid #1e1e1e;padding:6px 10px;display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <span style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px">날짜</span>
+        <select id="dailyDateFilter" class="cfg-select" style="font-size:12px;padding:3px 7px" onchange="loadDailyStatus()">
+          <option value="">오늘</option>
+        </select>
+        <span id="dailyModeBadge" class="cfg-mode-badge mock" style="margin-left:4px">MOCK</span>
+      </div>
+      <div class="settings-wrap" style="flex:1;overflow-y:auto">
       <div class="cfg-section">
         <div class="cfg-title" style="display:flex;align-items:center;gap:8px">
-          <span>금일 현황</span>
-          <span id="dailyModeBadge" class="cfg-mode-badge mock">MOCK</span>
+          <span>일별 현황</span>
           <span id="dailyDate" style="font-size:11px;color:#444;font-weight:normal;margin-left:4px"></span>
         </div>
 
@@ -513,6 +520,7 @@ code { color: #60a5fa; font-size: 11px; }
           <div id="dBudgetPct" style="font-size:11px;color:#555;margin-top:6px;text-align:right"></div>
         </div>
 
+      </div>
       </div>
     </div>
 
@@ -1085,7 +1093,7 @@ let activeRightTab = 'portfolio';
 function switchRightTab(tab) {
   activeRightTab = tab;
   document.getElementById('portfolioPanel').style.display = tab === 'portfolio' ? '' : 'none';
-  document.getElementById('dailyPanel').style.display     = tab === 'daily'     ? '' : 'none';
+  document.getElementById('dailyPanel').style.display     = tab === 'daily'     ? 'flex' : 'none';
   document.getElementById('tradesPanel').style.display    = tab === 'trades'    ? 'flex' : 'none';
   document.getElementById('settingsPanel').style.display  = tab === 'settings'  ? '' : 'none';
   document.getElementById('historyPanel').style.display   = tab === 'history'   ? '' : 'none';
@@ -1099,18 +1107,37 @@ function switchRightTab(tab) {
   if (tab === 'portfolio') loadPortfolio();
   if (tab === 'trades')    loadTradeDates();
   if (tab === 'history')   loadSettingsHistory();
-  if (tab === 'daily')     loadDailyStatus();
+  if (tab === 'daily')     loadDailyDates();
 }
 
 function refreshRight() {
   if (activeRightTab === 'portfolio') loadPortfolio();
   else if (activeRightTab === 'trades') loadTradeDates();
-  else if (activeRightTab === 'daily') loadDailyStatus();
+  else if (activeRightTab === 'daily') loadDailyStatus();  // 새로고침은 선택된 날짜 유지
 }
 
 // ── 금일 현황 ──────────────────────────────────────
+function loadDailyDates() {
+  fetch('/api/trades/dates?mode=' + activeMode).then(r => r.json()).then(dates => {
+    const sel = document.getElementById('dailyDateFilter');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">오늘</option>';
+    dates.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.date;
+      opt.textContent = d.date + '  (' + d.count + '건)';
+      sel.appendChild(opt);
+    });
+    if (cur && dates.find(d => d.date === cur)) sel.value = cur;
+    loadDailyStatus();
+  }).catch(() => loadDailyStatus());
+}
+
 function loadDailyStatus() {
-  fetch('/api/daily-status?mode=' + activeMode).then(r => r.json()).then(d => {
+  const sel = document.getElementById('dailyDateFilter');
+  const date = sel ? sel.value : '';
+  const url = '/api/daily-status?mode=' + activeMode + (date ? '&date=' + date : '');
+  fetch(url).then(r => r.json()).then(d => {
     const fmt = n => typeof n === 'number' ? n.toLocaleString('ko-KR') + '원' : '—';
     document.getElementById('dBudgetTotal').textContent     = fmt(d.budget_total);
     document.getElementById('dBudgetRemaining').textContent = fmt(d.budget_remaining);
@@ -1396,13 +1423,13 @@ function switchMobTab(tab) {
     document.getElementById('mobTabSettings').classList.toggle('active',  tab === 'settings');
     document.getElementById('mobTabHistory').classList.toggle('active',   tab === 'history');
     document.getElementById('portfolioPanel').style.display = tab === 'portfolio' ? '' : 'none';
-    document.getElementById('dailyPanel').style.display     = tab === 'daily'     ? '' : 'none';
+    document.getElementById('dailyPanel').style.display     = tab === 'daily'     ? 'flex' : 'none';
     document.getElementById('tradesPanel').style.display    = tab === 'trades'    ? 'flex' : 'none';
     document.getElementById('settingsPanel').style.display  = tab === 'settings'  ? '' : 'none';
     document.getElementById('historyPanel').style.display   = tab === 'history'   ? '' : 'none';
     document.getElementById('tradesRefreshBtn').style.display = (tab === 'portfolio' || tab === 'trades') ? '' : 'none';
     if (tab === 'portfolio') loadPortfolio();
-    if (tab === 'daily')     loadDailyStatus();
+    if (tab === 'daily')     loadDailyDates();
     if (tab === 'trades')    loadTradeDates();
     if (tab === 'settings')  { loadSettings(); loadStrategy(); }
     if (tab === 'history')   loadSettingsHistory();

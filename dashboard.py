@@ -655,10 +655,11 @@ def api_daily_status():
     mode = _valid_mode(request.args.get("mode", "mock"))
     today = datetime.date.today()
     today_str = str(today)
+    req_date = request.args.get("date", "").strip() or today_str
 
-    # 캐시 파일이 오늘 날짜면 그대로 반환
+    # 오늘 날짜면 캐시 파일 우선 사용
     status_path = _BASE / f"logs/daily_status_{mode}.json"
-    if status_path.exists():
+    if req_date == today_str and status_path.exists():
         try:
             cached = json.loads(status_path.read_text(encoding="utf-8"))
             if cached.get("date") == today_str and "profit_amount" in cached:
@@ -666,13 +667,13 @@ def api_daily_status():
         except Exception:
             pass
 
-    # 거래 내역에서 당일 현황 재계산
+    # 거래 내역에서 해당 날짜 현황 계산
     env = _read_env()
     budget = int(env.get("MOCK_BUDGET", "500000")) if mode == "mock" else int(env.get("REAL_BUDGET", "500000"))
     buy_count = buy_amount = sell_amount = profit_amount = tp_count = tp_amount = 0
     for r in _load_trades(mode):
         ts = r.get("timestamp", "")
-        if not ts.startswith(today_str):
+        if not ts.startswith(req_date):
             continue
         qty = int(r.get("quantity", 0))
         price = float(r.get("exec_price") or 0)
@@ -692,19 +693,20 @@ def api_daily_status():
                 tp_amount += amount
 
     data = {
-        "date": today_str, "mode": mode,
+        "date": req_date, "mode": mode,
         "budget_total": budget,
         "budget_remaining": max(0, budget - buy_amount + sell_amount),
         "buy_count": buy_count, "buy_amount": buy_amount,
         "sell_amount": sell_amount, "profit_amount": profit_amount,
         "take_profit_count": tp_count, "take_profit_amount": tp_amount,
     }
-    # 재계산 결과를 캐시 파일로 저장
-    try:
-        status_path.parent.mkdir(exist_ok=True)
-        status_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    except Exception:
-        pass
+    # 오늘 날짜 재계산 결과만 캐시 파일로 저장
+    if req_date == today_str:
+        try:
+            status_path.parent.mkdir(exist_ok=True)
+            status_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
     return jsonify(data)
 
 
