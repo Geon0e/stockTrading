@@ -124,15 +124,21 @@ def run_take_profit_cycle(ctx: dict) -> None:
                 limit_price = OrderClient._round_to_tick(int(avg_price * (1 + limit_pct / 100)))
                 with lock if lock else _null_ctx():
                     result = ctx["order_client"].sell(code, qty, token, limit_price=limit_price)
-                actual_profit_pct = round((limit_price - avg_price) / avg_price * 100, 2)
+                order_no = result.get("output", {}).get("ODNO", "")
+                exec_info = ctx["order_client"].get_execution(code, order_no, token, side="sell")
+                exec_price_str = exec_info["exec_price"] if exec_info else str(limit_price)
+                exec_time = exec_info["exec_time"] if exec_info else ""
+                exec_price_f = float(exec_price_str)
+                actual_profit_pct = round((exec_price_f - avg_price) / avg_price * 100, 2)
                 ctx["trade_logger"].log("SELL", code, qty, result, signal_type="익절",
-                                        exec_price=str(limit_price), profit_rate=actual_profit_pct)
+                                        exec_price=exec_price_str, exec_confirmed_at=exec_time,
+                                        profit_rate=actual_profit_pct)
                 _traded_today(ctx).add(code)
-                proceeds = limit_price * qty
+                proceeds = int(exec_price_f * qty)
                 add_daily_budget(ctx, proceeds, is_take_profit=True,
-                                 profit_amount=int((limit_price - avg_price) * qty))
+                                 profit_amount=int((exec_price_f - avg_price) * qty))
                 _notify_take_profit_sell(ctx, code, qty, actual_profit_pct)
-                logger.info(f"익절 매도: {code} | 매입가 {avg_price:,.0f}원 | 지정가 {limit_price:,}원 | 수익률 {actual_profit_pct:+.2f}% | 당일 잔여예산: {get_daily_budget(ctx):,}원")
+                logger.info(f"익절 매도: {code} | 매입가 {avg_price:,.0f}원 | 체결가 {exec_price_f:,.0f}원 | 수익률 {actual_profit_pct:+.2f}% | 당일 잔여예산: {get_daily_budget(ctx):,}원")
 
     except Exception as e:
         logger.error(f"익절 사이클 오류: {e}", exc_info=True)
@@ -633,12 +639,18 @@ def run_stop_loss_check(ctx: dict) -> None:
                     logger.warning(f"손절 매도 실패 [{stock_code}]: {sell_err} — 당일 재시도 중단")
                     _traded_today(ctx).add(stock_code)
                     continue
-                actual_profit_pct = round((limit_price - avg_price) / avg_price * 100, 2)
+                order_no = result.get("output", {}).get("ODNO", "")
+                exec_info = ctx["order_client"].get_execution(stock_code, order_no, token, side="sell")
+                exec_price_str = exec_info["exec_price"] if exec_info else str(limit_price)
+                exec_time = exec_info["exec_time"] if exec_info else ""
+                exec_price_f = float(exec_price_str)
+                actual_profit_pct = round((exec_price_f - avg_price) / avg_price * 100, 2)
                 ctx["trade_logger"].log("SELL", stock_code, qty, result, signal_type="손절",
-                                        exec_price=str(limit_price), profit_rate=actual_profit_pct)
+                                        exec_price=exec_price_str, exec_confirmed_at=exec_time,
+                                        profit_rate=actual_profit_pct)
                 _traded_today(ctx).add(stock_code)
-                add_daily_budget(ctx, int(limit_price * qty),
-                                 profit_amount=int((limit_price - avg_price) * qty))
+                add_daily_budget(ctx, int(exec_price_f * qty),
+                                 profit_amount=int((exec_price_f - avg_price) * qty))
                 _notify_sell(ctx, stock_code, qty, current_price, signal_type="손절")
                 logger.info(
                     f"손절 매도: {label} | 매입가: {avg_price:,.0f}원 | "

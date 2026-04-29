@@ -163,16 +163,19 @@ class OrderClient:
             return []
 
     def get_execution(self, stock_code: str, order_no: str, token: str,
-                      retries: int = 5, delay: float = 1.0) -> Optional[dict]:
-        """주문번호로 체결 내역 조회. 미체결이면 None 반환"""
+                      retries: int = 5, delay: float = 1.0,
+                      side: str = "buy") -> Optional[dict]:
+        """주문번호로 체결 내역 조회. 미체결이면 None 반환.
+        side: 'buy'(매수) 또는 'sell'(매도)"""
         tr_id = "VTTC8001R" if self._config.mode == "mock" else "TTTC8001R"
+        sll_buy_cd = "02" if side == "buy" else "01"
         today = datetime.date.today().strftime("%Y%m%d")
         params = {
             "CANO": self._config.cano,
             "ACNT_PRDT_CD": self._config.acnt_prdt_cd,
             "INQR_STRT_DT": today,
             "INQR_END_DT": today,
-            "SLL_BUY_DVSN_CD": "02",   # 매수
+            "SLL_BUY_DVSN_CD": sll_buy_cd,
             "INQR_DVSN": "00",
             "PDNO": stock_code,
             "CCLD_DVSN": "01",          # 체결만
@@ -192,8 +195,10 @@ class OrderClient:
             items = data.get("output1", [])
             if items:
                 item = items[0]
+                # ccld_avg_pric = 체결평균가 (정확한 필드), avg_prvs = 이전평균가 (fallback)
+                exec_price = item.get("ccld_avg_pric") or item.get("avg_prvs", "0")
                 return {
-                    "exec_price": item.get("avg_prvs") or item.get("ccld_avg_pric", "0"),
+                    "exec_price": exec_price,
                     "exec_qty":   item.get("tot_ccld_qty", "0"),
                     "exec_time":  item.get("ord_tmd", ""),
                 }

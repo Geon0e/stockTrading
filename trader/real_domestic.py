@@ -69,13 +69,19 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
                     logger.warning(f"[실전] 손절 매도 실패 [{stock_code}]: {e} — 당일 재시도 중단")
                     _traded_today(ctx).add(stock_code)
                     continue
-                actual_profit_pct = round((limit_price - avg_price) / avg_price * 100, 2)
+                order_no = result.get("output", {}).get("ODNO", "")
+                exec_info = ctx["order_client"].get_execution(stock_code, order_no, token, side="sell")
+                exec_price_str = exec_info["exec_price"] if exec_info else str(limit_price)
+                exec_time = exec_info["exec_time"] if exec_info else ""
+                exec_price_f = float(exec_price_str)
+                actual_profit_pct = round((exec_price_f - avg_price) / avg_price * 100, 2)
                 ctx["trade_logger"].log("SELL", stock_code, qty, result, signal_type="손절",
-                                        exec_price=str(limit_price), profit_rate=actual_profit_pct)
+                                        exec_price=exec_price_str, exec_confirmed_at=exec_time,
+                                        profit_rate=actual_profit_pct)
                 _traded_today(ctx).add(stock_code)
                 del holdings[stock_code]
-                add_daily_budget(ctx, int(limit_price * qty),
-                                 profit_amount=int((limit_price - avg_price) * qty))
+                add_daily_budget(ctx, int(exec_price_f * qty),
+                                 profit_amount=int((exec_price_f - avg_price) * qty))
                 if _tg(ctx):
                     tg_notify_sell(_tg(ctx), stock_code, qty, current_price, signal_type="손절")
                 logger.info(
@@ -96,13 +102,21 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
                 logger.warning(f"[실전] 전략 매도 실패 [{stock_code}]: {e} — 당일 재시도 중단")
                 _traded_today(ctx).add(stock_code)
                 continue
-            ctx["trade_logger"].log("SELL", stock_code, qty, result)
+            order_no = result.get("output", {}).get("ODNO", "")
+            exec_info = ctx["order_client"].get_execution(stock_code, order_no, token, side="sell")
+            exec_price_str = exec_info["exec_price"] if exec_info else str(current_price)
+            exec_time = exec_info["exec_time"] if exec_info else ""
+            exec_price_f = float(exec_price_str)
+            actual_profit_pct = round((exec_price_f - avg_price) / avg_price * 100, 2) if avg_price > 0 else 0
+            ctx["trade_logger"].log("SELL", stock_code, qty, result, signal_type="데드크로스",
+                                    exec_price=exec_price_str, exec_confirmed_at=exec_time,
+                                    profit_rate=actual_profit_pct)
             del holdings[stock_code]
-            add_daily_budget(ctx, int(current_price * qty),
-                             profit_amount=int((current_price - avg_price) * qty))
+            add_daily_budget(ctx, int(exec_price_f * qty),
+                             profit_amount=int((exec_price_f - avg_price) * qty))
             if _tg(ctx):
                 tg_notify_sell(_tg(ctx), stock_code, qty, prices[-1])
-            logger.info(f"[실전] 데드크로스 매도: {label}")
+            logger.info(f"[실전] 데드크로스 매도: {label} | 체결가: {exec_price_f:,.0f}원 | 수익률: {actual_profit_pct:+.2f}%")
 
     # ── 매수 ────────────────────────────────────────────────────────────
     bought = 0
