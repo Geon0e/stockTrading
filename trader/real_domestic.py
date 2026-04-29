@@ -81,6 +81,8 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
                                         profit_rate=actual_profit_pct)
                 _traded_today(ctx).add(stock_code)
                 del holdings[stock_code]
+                if ctx.get("realtime_price"):
+                    ctx["realtime_price"].unsubscribe([stock_code])
                 add_daily_budget(ctx, int(exec_price_f * qty),
                                  profit_amount=int((exec_price_f - avg_price) * qty))
                 if _tg(ctx):
@@ -113,6 +115,8 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
                                     exec_price=exec_price_str, exec_confirmed_at=exec_time,
                                     profit_rate=actual_profit_pct)
             del holdings[stock_code]
+            if ctx.get("realtime_price"):
+                ctx["realtime_price"].unsubscribe([stock_code])
             add_daily_budget(ctx, int(exec_price_f * qty),
                              profit_amount=int((exec_price_f - avg_price) * qty))
             if _tg(ctx):
@@ -228,6 +232,8 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
         holdings[code] = {"qty": quantity, "avg_price": exec_price}
         cost = int(float(exec_price) * quantity)
         deduct_daily_budget(ctx, cost)
+        if ctx.get("realtime_price"):
+            ctx["realtime_price"].subscribe([code])
         bought += 1
         logger.info(f"[실전] 매수 완료: {label} | {quantity}주 @ {exec_price}원 | 당일 잔여예산: {get_daily_budget(ctx):,}원")
 
