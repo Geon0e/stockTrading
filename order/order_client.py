@@ -62,8 +62,8 @@ class OrderClient:
             if item.get("ovrs_pdno") and int(item.get("ovrs_cblc_qty", "0")) > 0
         }
 
-    def get_holdings(self, token: str) -> Dict[str, dict]:
-        """보유 종목 조회. {종목코드: {"qty": 수량, "avg_price": 매입평균가}} 형태로 반환"""
+    def _get_balance(self, token: str, retries: int = 3, backoff: float = 2.0) -> dict:
+        """잔고 조회 공통 로직. 5xx 오류 시 최대 retries회 재시도."""
         params = {
             "CANO": self._config.cano,
             "ACNT_PRDT_CD": self._config.acnt_prdt_cd,
@@ -78,9 +78,25 @@ class OrderClient:
             "CTX_AREA_NK100": "",
         }
         url = f"{self._config.base_url}{_BALANCE_ENDPOINT}"
-        resp = requests.get(url, headers=self._headers(self._config.tr_balance, token), params=params, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
+        last_exc = None
+        for attempt in range(retries):
+            try:
+                resp = requests.get(url, headers=self._headers(self._config.tr_balance, token), params=params, timeout=10)
+                resp.raise_for_status()
+                return resp.json()
+            except requests.exceptions.HTTPError as e:
+                if resp.status_code >= 500:
+                    wait = backoff * (2 ** attempt)
+                    logger.warning(f"잔고 조회 서버 오류 ({resp.status_code}), {wait:.0f}초 후 재시도 ({attempt + 1}/{retries})")
+                    time.sleep(wait)
+                    last_exc = e
+                else:
+                    raise
+        raise last_exc
+
+    def get_holdings(self, token: str) -> Dict[str, dict]:
+        """보유 종목 조회. {종목코드: {"qty": 수량, "avg_price": 매입평균가}} 형태로 반환"""
+        data = self._get_balance(token)
 
         if data.get("rt_cd") != "0":
             raise RuntimeError(f"잔고 조회 실패: {data.get('msg1')}")
@@ -96,23 +112,7 @@ class OrderClient:
 
     def get_holdings_detail(self, token: str) -> Dict[str, dict]:
         """보유 종목 상세 조회. {종목코드: {"qty": int, "profit_rate": Decimal}} 형태로 반환"""
-        params = {
-            "CANO": self._config.cano,
-            "ACNT_PRDT_CD": self._config.acnt_prdt_cd,
-            "AFHR_FLPR_YN": "N",
-            "OFL_YN": "",
-            "INQR_DVSN": "02",
-            "UNPR_DVSN": "01",
-            "FUND_STTL_ICLD_YN": "N",
-            "FNCG_AMT_AUTO_RDPT_YN": "N",
-            "PRCS_DVSN": "01",
-            "CTX_AREA_FK100": "",
-            "CTX_AREA_NK100": "",
-        }
-        url = f"{self._config.base_url}{_BALANCE_ENDPOINT}"
-        resp = requests.get(url, headers=self._headers(self._config.tr_balance, token), params=params, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
+        data = self._get_balance(token)
 
         if data.get("rt_cd") != "0":
             raise RuntimeError(f"잔고 조회 실패: {data.get('msg1')}")

@@ -690,6 +690,19 @@ def run_nasdaq_cycle(ctx: dict) -> None:
         logger.error(f"나스닥 사이클 오류: {e}", exc_info=True)
 
 
+def _next_aligned_run(interval_minutes: int, anchor: datetime.time) -> datetime.datetime:
+    """interval_minutes 주기를 anchor 시각 기준으로 정렬한 다음 실행 시각 반환.
+    anchor 이전이면 anchor를, 이후면 anchor + N*interval 중 now 직후 시각을 반환."""
+    now = datetime.datetime.now()
+    anchor_dt = datetime.datetime.combine(now.date(), anchor)
+    if now <= anchor_dt:
+        return anchor_dt
+    elapsed_seconds = (now - anchor_dt).total_seconds()
+    interval_seconds = interval_minutes * 60
+    periods = int(elapsed_seconds // interval_seconds) + 1
+    return anchor_dt + datetime.timedelta(seconds=periods * interval_seconds)
+
+
 def main() -> None:
     config = load_config()
 
@@ -750,10 +763,16 @@ def main() -> None:
 
     interval = config.scan_interval_minutes
     if interval > 0:
-        schedule.every(interval).minutes.do(run_domestic_cycle, ctx)
+        domestic_anchor = datetime.time(9, 0)
+        job_dom = schedule.every(interval).minutes.do(run_domestic_cycle, ctx)
+        job_dom.next_run = _next_aligned_run(interval, domestic_anchor)
         if config.scan_nasdaq:
-            schedule.every(interval).minutes.do(run_nasdaq_cycle, ctx)
-        logger.info(f"스캔 주기: {interval}분 간격")
+            nasdaq_anchor = datetime.time(23, 35)
+            job_nas = schedule.every(interval).minutes.do(run_nasdaq_cycle, ctx)
+            job_nas.next_run = _next_aligned_run(interval, nasdaq_anchor)
+        logger.info(
+            f"스캔 주기: {interval}분 간격 | 국내 첫 실행: {job_dom.next_run.strftime('%H:%M')}"
+        )
     else:
         schedule.every().day.at("09:05").do(run_domestic_cycle, ctx)
         if config.scan_nasdaq:
