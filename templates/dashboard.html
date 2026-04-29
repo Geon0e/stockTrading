@@ -889,6 +889,9 @@ function setActiveMode(mode) {
   const hisBadge = document.getElementById('historyModeBadge');
   hisBadge.textContent = sm; hisBadge.className = 'cfg-mode-badge ' + mode;
 
+  // 실전 → 모의 전환 시 SSE 연결 해제
+  if (mode !== 'real') disconnectPfSse();
+
   // 데이터 새로고침
   if (activeRightTab === 'trades') loadTradeDates(); else loadTrades();
   loadSummary();
@@ -1191,7 +1194,53 @@ function loadDailyStatus() {
 }
 
 // ── 포트폴리오 ──────────────────────────────────────
+let _pfSse = null;
+
+function _pfFmt(code, n) {
+  return /^[A-Z]{1,5}$/.test(code) ? '$' + n.toFixed(2) : n.toLocaleString('ko-KR') + '원';
+}
+
+function _pfPctHtml(pct) {
+  if (pct == null) return '—';
+  return `<span style="color:${pct >= 0 ? '#22c55e' : '#ef4444'};font-weight:bold">${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</span>`;
+}
+
+function updatePortfolioRow(code, currentPrice, profitPct) {
+  const row = document.querySelector(`#pfBody tr[data-code="${code}"]`);
+  if (!row) return;
+  const priceCell = row.querySelector('.pf-cur');
+  const pctCell   = row.querySelector('.pf-pct');
+  if (priceCell) priceCell.textContent = _pfFmt(code, currentPrice);
+  if (pctCell)   pctCell.innerHTML = _pfPctHtml(profitPct);
+  // 체결 flash
+  row.style.transition = 'background 0.4s';
+  row.style.background = profitPct >= 0 ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)';
+  setTimeout(() => { row.style.background = ''; }, 400);
+}
+
+function disconnectPfSse() {
+  if (_pfSse) { _pfSse.close(); _pfSse = null; }
+}
+
+function connectPfSse() {
+  disconnectPfSse();
+  _pfSse = new EventSource('/stream/portfolio');
+  _pfSse.addEventListener('initial', e => {
+    const list = JSON.parse(e.data);
+    list.forEach(u => updatePortfolioRow(u.code, u.current_price, u.profit_pct));
+  });
+  _pfSse.onmessage = e => {
+    const u = JSON.parse(e.data);
+    if (u.code) updatePortfolioRow(u.code, u.current_price, u.profit_pct);
+  };
+  _pfSse.onerror = () => {
+    disconnectPfSse();
+    setTimeout(() => { if (activeMode === 'real') connectPfSse(); }, 5000);
+  };
+}
+
 function loadPortfolio() {
+  if (activeMode !== 'real') disconnectPfSse();
   fetch('/api/portfolio?mode=' + activeMode).then(r => r.json()).then(items => {
     items.sort((a, b) => (b.profit_pct ?? -Infinity) - (a.profit_pct ?? -Infinity));
     const tb = document.getElementById('pfBody');
@@ -1200,29 +1249,27 @@ function loadPortfolio() {
       const tr = document.createElement('tr');
       tr.innerHTML = '<td colspan="5" style="color:#444;text-align:center;padding:20px">보유 종목 없음</td>';
       tb.appendChild(tr);
+      disconnectPfSse();
       return;
     }
     items.forEach(h => {
       const nameMain = h.name
         ? `<span style="font-size:13px;color:#e0e0e0;font-weight:bold">${h.name}</span><br><span style="color:#444;font-size:10px">${h.code}</span>`
         : `<span style="font-size:13px;color:#60a5fa;font-weight:bold">${h.code}</span>`;
-      const isOverseas = /^[A-Z]{1,5}$/.test(h.code);
-      const fmt = n => isOverseas ? '$' + n.toFixed(2) : n.toLocaleString('ko-KR') + '원';
-      const avgStr = fmt(h.avg_price);
-      const curStr = h.current_price != null ? fmt(h.current_price) : '—';
-      const pct = h.profit_pct;
-      const pctStr = pct != null
-        ? `<span style="color:${pct >= 0 ? '#22c55e' : '#ef4444'};font-weight:bold">${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%</span>`
-        : '—';
+      const avgStr = _pfFmt(h.code, h.avg_price);
+      const curStr = h.current_price != null ? _pfFmt(h.code, h.current_price) : '—';
       const tr = document.createElement('tr');
+      tr.setAttribute('data-code', h.code);
       tr.innerHTML =
         `<td>${nameMain}</td>` +
         `<td style="color:#60a5fa;font-weight:bold">${h.qty}주</td>` +
         `<td style="color:#aaa">${avgStr}</td>` +
-        `<td style="color:#aaa">${curStr}</td>` +
-        `<td>${pctStr}</td>`;
+        `<td class="pf-cur" style="color:#aaa">${curStr}</td>` +
+        `<td class="pf-pct">${_pfPctHtml(h.profit_pct)}</td>`;
       tb.appendChild(tr);
     });
+    // 실전 모드면 SSE로 실시간 업데이트
+    if (activeMode === 'real') connectPfSse();
   }).catch(() => {});
 }
 
@@ -1476,7 +1523,8 @@ loadTradeDates();
 loadSummary();
 loadSettings();
 setInterval(loadStatus,    5000);
-setInterval(loadPortfolio, 30000);
+// 포트폴리오: 실전 모드는 SSE 실시간 / 모의 모드는 30초 폴링
+setInterval(() => { if (activeMode !== 'real') loadPortfolio(); }, 30000);
 setInterval(loadTrades,    30000);
 setInterval(loadSummary,   30000);
 setInterval(() => { if (activeRightTab === 'daily') loadDailyStatus(); }, 30000);

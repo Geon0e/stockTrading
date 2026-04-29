@@ -3,3 +3,4 @@ python-dotenv==1.0.1
 schedule==1.2.2
 finance-datareader
 flask>=3.0
+websocket-client>=1.6.0
