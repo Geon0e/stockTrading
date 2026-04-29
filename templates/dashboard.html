@@ -690,17 +690,61 @@ code { color: #60a5fa; font-size: 11px; }
           <span id="strategyModeBadge" class="cfg-mode-badge mock">MOCK</span>
         </div>
 
-        <div style="font-size:11px;color:#4ade80;font-weight:bold;margin:2px 0 6px">▲ 매수 — 활성화된 조건을 모두 충족할 때</div>
+        <div style="font-size:11px;color:#60a5fa;font-weight:bold;margin:2px 0 4px">▲ 매수 필터 — AND 조건 (모두 통과 필수)</div>
+
+        <div class="cfg-row">
+          <label class="cfg-toggle"><input type="checkbox" id="stBuyTrend"><span></span></label>
+          <select id="stBuyTrendCond" class="cfg-select" style="width:52px"><option value="AND">AND</option><option value="OR">OR</option></select>
+          <span class="st-name">상승추세필터</span>
+          <span class="st-params">
+            <span class="cfg-hint">중기MA</span><input type="number" id="stBuyTrendMid" class="cfg-input" style="width:50px">
+            <span class="cfg-hint">장기MA</span><input type="number" id="stBuyTrendLong" class="cfg-input" style="width:50px">
+          </span>
+        </div>
+
+        <div class="cfg-row">
+          <label class="cfg-toggle"><input type="checkbox" id="stBuyReturn"><span></span></label>
+          <select id="stBuyReturnCond" class="cfg-select" style="width:52px"><option value="AND">AND</option><option value="OR">OR</option></select>
+          <span class="st-name">수익률필터</span>
+          <span class="st-params">
+            <span class="cfg-hint">기간(일)</span><input type="number" id="stBuyReturnPer" class="cfg-input" style="width:56px">
+          </span>
+        </div>
+
+        <div class="cfg-row">
+          <label class="cfg-toggle"><input type="checkbox" id="stBuyVol"><span></span></label>
+          <select id="stBuyVolCond" class="cfg-select" style="width:52px"><option value="AND">AND</option><option value="OR">OR</option></select>
+          <span class="st-name">거래량증가</span>
+          <span class="st-params">
+            <span class="cfg-hint">단기</span><input type="number" id="stBuyVolS" class="cfg-input" style="width:50px">
+            <span class="cfg-hint">장기</span><input type="number" id="stBuyVolL" class="cfg-input" style="width:50px">
+          </span>
+        </div>
+
+        <div style="font-size:11px;color:#4ade80;font-weight:bold;margin:6px 0 4px">▲ 매수 트리거 — OR 조건 (하나 충족 시 진입)</div>
 
         <div class="cfg-row">
           <label class="cfg-toggle"><input type="checkbox" id="stBuyGc1"><span></span></label>
-          <select id="stBuyGc1Cond" class="cfg-select" style="width:52px"><option value="AND">AND</option><option value="OR">OR</option></select>
+          <select id="stBuyGc1Cond" class="cfg-select" style="width:52px"><option value="OR">OR</option><option value="AND">AND</option></select>
           <span class="st-name">단기 골든크로스</span>
           <span class="st-params">
             <span class="cfg-hint">단기</span><input type="number" id="stBuyGc1Short" class="cfg-input" style="width:56px">
             <span class="cfg-hint">장기</span><input type="number" id="stBuyGc1Long" class="cfg-input" style="width:56px">
           </span>
         </div>
+
+        <div class="cfg-row">
+          <label class="cfg-toggle"><input type="checkbox" id="stBuyPullback"><span></span></label>
+          <select id="stBuyPullbackCond" class="cfg-select" style="width:52px"><option value="OR">OR</option><option value="AND">AND</option></select>
+          <span class="st-name">눌림목반등</span>
+          <span class="st-params">
+            <span class="cfg-hint">추세선</span><input type="number" id="stBuyPbMa" class="cfg-input" style="width:48px">
+            <span class="cfg-hint">참조일</span><input type="number" id="stBuyPbLook" class="cfg-input" style="width:48px">
+            <span class="cfg-hint">최소하락</span><input type="number" id="stBuyPbDrop" class="cfg-input" style="width:48px">
+          </span>
+        </div>
+
+        <div style="font-size:11px;color:#a3a3a3;font-weight:bold;margin:6px 0 4px">▲ 매수 기타</div>
 
         <div class="cfg-row">
           <label class="cfg-toggle"><input type="checkbox" id="stBuyGc2"><span></span></label>
@@ -1313,11 +1357,15 @@ function saveAndRestart() {
 
   const strategy = {
     buy: {
-      '단기 골든크로스': { '활성화': ck('stBuyGc1'), '조건': sv('stBuyGc1Cond'), '단기': ni('stBuyGc1Short'), '장기': ni('stBuyGc1Long') },
-      '장기 골든크로스': { '활성화': ck('stBuyGc2'), '조건': sv('stBuyGc2Cond'), '단기': ni('stBuyGc2Short'), '장기': ni('stBuyGc2Long') },
-      'RSI':            { '활성화': ck('stBuyRsi'),  '조건': sv('stBuyRsiCond'),  '기간': ni('stBuyRsiPer'), '매수 기준 이하': ni('stBuyRsiThr') },
-      'MACD':           { '활성화': ck('stBuyMacd'), '조건': sv('stBuyMacdCond'), '단기': ni('stBuyMacdS'), '장기': ni('stBuyMacdL'), '시그널': ni('stBuyMacdSig') },
-      '볼린저밴드':     { '활성화': ck('stBuyBb'),   '조건': sv('stBuyBbCond'),   '기간': ni('stBuyBbPer'), '표준편차': nf('stBuyBbStd') },
+      '상승추세필터': { '활성화': ck('stBuyTrend'),    '조건': sv('stBuyTrendCond'),    '중기': ni('stBuyTrendMid'),  '장기': ni('stBuyTrendLong') },
+      '수익률필터':   { '활성화': ck('stBuyReturn'),   '조건': sv('stBuyReturnCond'),   '기간': ni('stBuyReturnPer') },
+      '거래량증가':   { '활성화': ck('stBuyVol'),      '조건': sv('stBuyVolCond'),      '단기': ni('stBuyVolS'),      '장기': ni('stBuyVolL') },
+      '단기 골든크로스': { '활성화': ck('stBuyGc1'),   '조건': sv('stBuyGc1Cond'),   '단기': ni('stBuyGc1Short'), '장기': ni('stBuyGc1Long') },
+      '눌림목반등':   { '활성화': ck('stBuyPullback'), '조건': sv('stBuyPullbackCond'), '추세선': ni('stBuyPbMa'), '참조일': ni('stBuyPbLook'), '최소하락일': ni('stBuyPbDrop') },
+      '장기 골든크로스': { '활성화': ck('stBuyGc2'),   '조건': sv('stBuyGc2Cond'),   '단기': ni('stBuyGc2Short'), '장기': ni('stBuyGc2Long') },
+      'RSI':            { '활성화': ck('stBuyRsi'),    '조건': sv('stBuyRsiCond'),    '기간': ni('stBuyRsiPer'), '매수 기준 이하': ni('stBuyRsiThr') },
+      'MACD':           { '활성화': ck('stBuyMacd'),   '조건': sv('stBuyMacdCond'),   '단기': ni('stBuyMacdS'), '장기': ni('stBuyMacdL'), '시그널': ni('stBuyMacdSig') },
+      '볼린저밴드':     { '활성화': ck('stBuyBb'),     '조건': sv('stBuyBbCond'),     '기간': ni('stBuyBbPer'), '표준편차': nf('stBuyBbStd') },
     },
     sell: {
       '단기 데드크로스': { '활성화': ck('stSellDc1'),  '조건': sv('stSellDc1Cond'),  '단기': ni('stSellDc1Short'), '장기': ni('stSellDc1Long') },
@@ -1424,11 +1472,31 @@ function loadStrategy() {
   fetch('/api/strategy?mode=' + activeMode).then(r => r.json()).then(d => {
     const b = d.buy || {}, s = d.sell || {};
     const sel = (id, v, def) => { const el = document.getElementById(id); if (el) el.value = v || def || el.options[0].value; };
+    const trend = b['상승추세필터'] || {};
+    document.getElementById('stBuyTrend').checked = !!trend['활성화'];
+    sel('stBuyTrendCond', trend['조건'], 'AND');
+    document.getElementById('stBuyTrendMid').value  = trend['중기'] ?? 20;
+    document.getElementById('stBuyTrendLong').value = trend['장기'] ?? 60;
+    const ret = b['수익률필터'] || {};
+    document.getElementById('stBuyReturn').checked = !!ret['활성화'];
+    sel('stBuyReturnCond', ret['조건'], 'AND');
+    document.getElementById('stBuyReturnPer').value = ret['기간'] ?? 20;
+    const vol = b['거래량증가'] || {};
+    document.getElementById('stBuyVol').checked = !!vol['활성화'];
+    sel('stBuyVolCond', vol['조건'], 'AND');
+    document.getElementById('stBuyVolS').value = vol['단기'] ?? 5;
+    document.getElementById('stBuyVolL').value = vol['장기'] ?? 20;
     const gc1 = b['단기 골든크로스'] || {};
     document.getElementById('stBuyGc1').checked = !!gc1['활성화'];
-    sel('stBuyGc1Cond', gc1['조건'], 'AND');
+    sel('stBuyGc1Cond', gc1['조건'], 'OR');
     document.getElementById('stBuyGc1Short').value = gc1['단기'] ?? '';
     document.getElementById('stBuyGc1Long').value  = gc1['장기'] ?? '';
+    const pb = b['눌림목반등'] || {};
+    document.getElementById('stBuyPullback').checked = !!pb['활성화'];
+    sel('stBuyPullbackCond', pb['조건'], 'OR');
+    document.getElementById('stBuyPbMa').value   = pb['추세선'] ?? 20;
+    document.getElementById('stBuyPbLook').value = pb['참조일'] ?? 5;
+    document.getElementById('stBuyPbDrop').value = pb['최소하락일'] ?? 2;
     const gc2 = b['장기 골든크로스'] || {};
     document.getElementById('stBuyGc2').checked = !!gc2['활성화'];
     sel('stBuyGc2Cond', gc2['조건'], 'AND');
