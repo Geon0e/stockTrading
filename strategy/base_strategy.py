@@ -21,3 +21,12 @@ class BaseStrategy(ABC):
     @abstractmethod
     def required_data_points(self) -> int:
         """전략 실행에 필요한 최소 가격 데이터 수"""
+
+    @property
+    def volume_filter(self) -> tuple:
+        """(enabled: bool, short_period: int, long_period: int) — 거래량 증가 추세 필터 설정."""
+        return False, 5, 20
+
+    def get_signal_type(self, prices: List[Decimal]) -> str:
+        """should_buy가 True일 때 어떤 트리거가 발동됐는지 반환."""
+        return "골든크로스"

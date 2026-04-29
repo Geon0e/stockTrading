@@ -67,6 +67,39 @@ class ConfigurableStrategy(BaseStrategy):
             s0, l0 = sma(prices[:-1], short), sma(prices[:-1], long_)
             return s0 <= l0 and s1 > l1
 
+        if name == "상승추세필터":
+            # MA중기 > MA장기 — 추세 방향 확인 (크로스오버 아닌 현재 위치)
+            mid  = cfg.get("중기", 20)
+            long_ = cfg.get("장기", 60)
+            if len(prices) < long_:
+                return False
+            return sma(prices, mid) > sma(prices, long_)
+
+        if name == "수익률필터":
+            # N일 전 대비 현재 수익률 > 0
+            period = cfg.get("기간", 20)
+            if len(prices) <= period:
+                return False
+            return prices[-1] > prices[-(period + 1)]
+
+        if name == "눌림목반등":
+            # 추세선 위 + 최근 N일 조정 + 오늘 반등
+            ma_period  = cfg.get("추세선", 20)
+            lookback   = cfg.get("참조일", 5)
+            min_drops  = cfg.get("최소하락일", 2)
+            if len(prices) < ma_period + lookback:
+                return False
+            # 추세선(MA20) 위에 있어야
+            if prices[-1] < sma(prices, ma_period):
+                return False
+            # 최근 lookback일 중 연속 하락 구간이 min_drops일 이상
+            window = prices[-(lookback + 1):-1]  # 오늘 제외
+            drops = sum(1 for i in range(1, len(window)) if window[i] < window[i - 1])
+            if drops < min_drops:
+                return False
+            # 오늘 반등: 어제보다 올랐음
+            return prices[-1] > prices[-2]
+
         if name == "RSI":
             threshold = Decimal(str(cfg.get("매수 기준 이하", 30)))
             return rsi(prices, cfg.get("기간", 14)) <= threshold
@@ -82,6 +115,25 @@ class ConfigurableStrategy(BaseStrategy):
             return prices[-1] <= lower
 
         return False
+
+    @property
+    def volume_filter(self) -> tuple:
+        """(enabled, short, long) — 거래량증가 조건이 활성화됐을 때 screener에서 사용."""
+        cfg = self._buy.get("거래량증가", {})
+        if not cfg.get("활성화", False):
+            return False, 5, 20
+        return True, int(cfg.get("단기", 5)), int(cfg.get("장기", 20))
+
+    def get_signal_type(self, prices: List[Decimal]) -> str:
+        """should_buy가 True일 때 어떤 OR 트리거가 발동됐는지 반환."""
+        or_conds = [
+            (n, c) for n, c in self._buy.items()
+            if c.get("활성화") and str(c.get("조건", "AND")).upper() == "OR"
+        ]
+        for name, cfg in or_conds:
+            if self._eval_buy(name, cfg, prices):
+                return name
+        return "골든크로스"
 
     # ── 매도 ────────────────────────────────────────────
     def should_sell(self, prices: List[Decimal]) -> bool:

@@ -48,30 +48,45 @@ class StockScreener:
         total = len(codes)
         logger.info(f"스크리닝 시작: {total}개 종목 (스레드: {max_workers}개)")
 
+        vol_enabled, vol_short, vol_long = self._strategy.volume_filter
+        n = self._strategy.required_data_points
+
         results: List[Dict] = []
         lock = threading.Lock()
         done = [0]
 
         def _check(code: str) -> None:
             try:
-                prices = self._price_client.fetch_closing_prices(
-                    code, self._strategy.required_data_points, token
-                )
-                time.sleep(0.05)  # 스레드별 독립 rate limit (전체: ~workers × 20 req/s)
+                if vol_enabled:
+                    ohlcv = self._price_client.fetch_ohlcv(code, n, token)
+                    from decimal import Decimal as _D
+                    prices = [_D(str(bar["close"])) for bar in ohlcv]
+                    # 거래량 증가 추세 필터: 단기 평균 거래량 > 장기 평균 거래량
+                    volumes = [bar["volume"] for bar in ohlcv]
+                    if len(volumes) >= vol_long:
+                        avg_s = sum(volumes[-vol_short:]) / vol_short
+                        avg_l = sum(volumes[-vol_long:]) / vol_long
+                        if avg_s <= avg_l:
+                            return  # 거래량 증가 추세 아님
+                else:
+                    prices = self._price_client.fetch_closing_prices(code, n, token)
+
+                time.sleep(0.05)  # 스레드별 독립 rate limit
                 if self._strategy.should_buy(prices):
+                    signal_type = self._strategy.get_signal_type(prices)
                     name = get_stock_name(code)
                     entry = {
                         "code": code,
                         "name": name,
                         "price": prices[-1],
-                        "signal_type": "골든크로스",
+                        "signal_type": signal_type,
                         "signal_detected_at": datetime.datetime.now().isoformat(),
                         "market": "KR",
                     }
                     with lock:
                         results.append(entry)
                     label = f"{code}({name})" if name else code
-                    logger.info(f"골든크로스 감지: {label} | 현재가: {prices[-1]}")
+                    logger.info(f"[{signal_type}] 감지: {label} | 현재가: {prices[-1]}")
             except Exception as e:
                 logger.debug(f"{code} 스킵: {e}")
             with lock:
