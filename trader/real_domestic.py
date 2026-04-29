@@ -81,6 +81,7 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
                                         profit_rate=actual_profit_pct)
                 _traded_today(ctx).add(stock_code)
                 del holdings[stock_code]
+                ctx["holdings_cache"].pop(stock_code, None)
                 if ctx.get("realtime_price"):
                     ctx["realtime_price"].unsubscribe([stock_code])
                 add_daily_budget(ctx, int(exec_price_f * qty),
@@ -115,6 +116,7 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
                                     exec_price=exec_price_str, exec_confirmed_at=exec_time,
                                     profit_rate=actual_profit_pct)
             del holdings[stock_code]
+            ctx["holdings_cache"].pop(stock_code, None)
             if ctx.get("realtime_price"):
                 ctx["realtime_price"].unsubscribe([stock_code])
             add_daily_budget(ctx, int(exec_price_f * qty),
@@ -230,6 +232,7 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
             exec_confirmed_at=exec_time,
         )
         holdings[code] = {"qty": quantity, "avg_price": exec_price}
+        ctx["holdings_cache"][code] = {"qty": quantity, "avg_price": float(exec_price)}
         cost = int(float(exec_price) * quantity)
         deduct_daily_budget(ctx, cost)
         if ctx.get("realtime_price"):

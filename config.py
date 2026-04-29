@@ -118,7 +118,7 @@ def load_config() -> Config:
         exclude_list=tuple(c.strip() for c in os.getenv(f"EXCLUDE_LIST_{mode.upper()}", os.getenv("EXCLUDE_LIST", "")).split(",") if c.strip()),
         order_type=os.getenv(f"ORDER_TYPE_{mode.upper()}", "market"),
         limit_order_pct=float(os.getenv(f"LIMIT_ORDER_PCT_{mode.upper()}", "1.0")),
-        monitor_interval_seconds=int(os.getenv(f"MONITOR_INTERVAL_SECONDS_{mode.upper()}", os.getenv("MONITOR_INTERVAL_SECONDS", "60"))),
+        monitor_interval_seconds=int(os.getenv(f"MONITOR_INTERVAL_SECONDS_{mode.upper()}", os.getenv("MONITOR_INTERVAL_SECONDS", "1" if mode == "real" else "60"))),
         morning_sell_profit_pct=float(os.getenv(f"MORNING_SELL_PROFIT_PCT_{mode.upper()}", os.getenv("MORNING_SELL_PROFIT_PCT", "0"))),
         morning_stoploss_enabled=os.getenv(f"MORNING_STOPLOSS_ENABLED_{mode.upper()}", os.getenv("MORNING_STOPLOSS_ENABLED", "false")).lower() == "true",
         matagi_drop_pct=float(os.getenv(f"MATAGI_DROP_PCT_{mode.upper()}", os.getenv("MATAGI_DROP_PCT", "1.5"))),

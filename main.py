@@ -114,32 +114,32 @@ def run_take_profit_cycle(ctx: dict) -> None:
     lock = ctx.get("order_lock")
     rtp = ctx.get("realtime_price")
     ws_prices = rtp.get_prices() if rtp else {}
+    holdings_cache = ctx.get("holdings_cache", {})
 
     try:
         token = ctx["token_manager"].get_valid_token()
 
-        # WebSocket 데이터가 있으면 get_holdings + WS 가격으로 수익률 직접 계산
-        # 없으면 기존 get_holdings_detail REST 방식 fallback
-        if ws_prices:
-            holdings = ctx["order_client"].get_holdings(token)
+        # holdings_cache + WS 가격으로 수익률 계산 (REST 호출 없음)
+        # 둘 다 없으면 get_holdings_detail REST fallback
+        if holdings_cache and ws_prices:
             candidates = []
-            for code, info in holdings.items():
+            for code, info in list(holdings_cache.items()):
                 avg_price = float(info.get("avg_price") or 0)
                 qty = info["qty"]
                 ws_data = ws_prices.get(code)
                 if not ws_data or avg_price <= 0:
                     continue
-                current_price = ws_data["price"]
-                profit_rate = Decimal(str(round((current_price - avg_price) / avg_price * 100, 4)))
+                current_price = float(ws_data["price"])
+                profit_rate = round((current_price - avg_price) / avg_price * 100, 4)
                 candidates.append((code, qty, avg_price, profit_rate))
-            logger.debug(f"[익절] WebSocket 가격 기준 {len(candidates)}개 종목 체크")
+            logger.debug(f"[익절] 캐시+WS 기준 {len(candidates)}개 종목 체크")
         else:
             holdings_detail = ctx["order_client"].get_holdings_detail(token)
             candidates = [
                 (code, d["qty"], d["avg_price"], d["profit_rate"])
                 for code, d in holdings_detail.items()
             ]
-            logger.debug(f"[익절] REST 가격 기준 {len(candidates)}개 종목 체크")
+            logger.debug(f"[익절] REST 기준 {len(candidates)}개 종목 체크")
 
         for code, qty, avg_price, profit_rate in candidates:
             if profit_rate < config.take_profit_rate:
@@ -158,6 +158,7 @@ def run_take_profit_cycle(ctx: dict) -> None:
                                     exec_price=exec_price_str, exec_confirmed_at=exec_time,
                                     profit_rate=actual_profit_pct)
             _traded_today(ctx).add(code)
+            ctx["holdings_cache"].pop(code, None)
             if rtp:
                 rtp.unsubscribe([code])
             proceeds = int(exec_price_f * qty)
@@ -615,9 +616,11 @@ def run_stop_loss_check(ctx: dict) -> None:
         return
     rtp = ctx.get("realtime_price")
     ws_prices = rtp.get_prices() if rtp else {}
+    holdings = dict(ctx.get("holdings_cache", {}))  # 인메모리 캐시 — REST 호출 없음
+    if not holdings:
+        return
     try:
         token    = ctx["token_manager"].get_valid_token()
-        holdings = ctx["order_client"].get_holdings(token)
         snapshot = []
         _exclude = set(config.exclude_list)
         for stock_code, info in list(holdings.items()):
@@ -685,6 +688,7 @@ def run_stop_loss_check(ctx: dict) -> None:
                                         exec_price=exec_price_str, exec_confirmed_at=exec_time,
                                         profit_rate=actual_profit_pct)
                 _traded_today(ctx).add(stock_code)
+                ctx["holdings_cache"].pop(stock_code, None)
                 if rtp:
                     rtp.unsubscribe([stock_code])
                 add_daily_budget(ctx, int(exec_price_f * qty),
@@ -800,6 +804,7 @@ def main() -> None:
         "domestic_buy_date":   None,
         "order_lock":          order_lock,
         "budget_lock":         budget_lock,
+        "holdings_cache":      {},  # {code: {"qty": int, "avg_price": float}} — 매수/매도 시 갱신
     }
 
     # real 모드: WebSocket 실시간 시세 초기화
@@ -820,12 +825,15 @@ def main() -> None:
             _init_token = ctx["token_manager"].get_valid_token()
             _executions = ctx["order_client"].get_today_ccld(_init_token)
             init_daily_from_api(ctx, _executions)
-            # 현재 보유 종목 WebSocket 구독
-            if ctx["realtime_price"]:
-                _init_holdings = ctx["order_client"].get_holdings(_init_token)
-                if _init_holdings:
-                    ctx["realtime_price"].subscribe(list(_init_holdings.keys()))
-                    logger.info(f"[실시간] 보유 {len(_init_holdings)}개 종목 구독 시작")
+            # 현재 보유 종목 WebSocket 구독 + holdings_cache 초기화
+            _init_holdings = ctx["order_client"].get_holdings(_init_token)
+            ctx["holdings_cache"] = {
+                code: {"qty": info["qty"], "avg_price": float(info.get("avg_price") or 0)}
+                for code, info in _init_holdings.items()
+            }
+            if ctx["realtime_price"] and _init_holdings:
+                ctx["realtime_price"].subscribe(list(_init_holdings.keys()))
+                logger.info(f"[실시간] 보유 {len(_init_holdings)}개 종목 구독 시작")
         except Exception as e:
             logger.warning(f"[금일현황] KIS API 초기화 실패 — 로컬 로그로 폴백: {e}")
 
