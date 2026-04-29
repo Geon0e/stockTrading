@@ -461,6 +461,9 @@ def api_get_config():
     result = {
         "mode": mode,
         "scan_interval_minutes": int(env.get(f"SCAN_INTERVAL_MINUTES_{m}", "0")),
+        "scan_interval_early": int(env.get(f"SCAN_INTERVAL_EARLY_{m}", env.get("SCAN_INTERVAL_EARLY", "5"))),
+        "scan_interval_mid":   int(env.get(f"SCAN_INTERVAL_MID_{m}",   env.get("SCAN_INTERVAL_MID",   "20"))),
+        "scan_interval_late":  int(env.get(f"SCAN_INTERVAL_LATE_{m}",  env.get("SCAN_INTERVAL_LATE",  "10"))),
         "budget": budget,
         "max_positions": int(env.get(f"MAX_POSITIONS_{m}", env.get("MAX_POSITIONS", "5"))),
         "order_quantity": int(env.get(f"ORDER_QUANTITY_{m}", env.get("ORDER_QUANTITY", "0"))),
@@ -565,7 +568,14 @@ def api_save_restart():
     if "scan_interval_minutes" in cfg:
         val = int(cfg["scan_interval_minutes"])
         _write_env_key(f"SCAN_INTERVAL_MINUTES_{mode.upper()}", str(val))
-        changes["스캔 주기"] = _format_interval(val)
+        changes["스캔 주기(고정)"] = _format_interval(val)
+
+    for key, label in [("scan_interval_early", "초반"), ("scan_interval_mid", "중반"), ("scan_interval_late", "후반")]:
+        if key in cfg:
+            val = int(cfg[key])
+            env_key = f"SCAN_INTERVAL_{'EARLY' if key == 'scan_interval_early' else 'MID' if key == 'scan_interval_mid' else 'LATE'}_{mode.upper()}"
+            _write_env_key(env_key, str(val))
+            changes[f"스캔({label})"] = f"{val}분" if val > 0 else "비활성"
 
     if "budget" in cfg:
         val = int(cfg["budget"])

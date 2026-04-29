@@ -792,6 +792,18 @@ def _start_ws_price_writer(rtp, stop_event: threading.Event) -> None:
     threading.Thread(target=_loop, name="ws-price-writer", daemon=True).start()
 
 
+def _get_current_scan_interval(config) -> int:
+    """현재 KST 시각 기준 국내 스캔 주기(분) 반환. 장 외 시간이면 0."""
+    now = datetime.datetime.now(KST).time()
+    if datetime.time(9, 0) <= now < datetime.time(10, 0):
+        return config.scan_interval_early
+    if datetime.time(10, 0) <= now < datetime.time(14, 30):
+        return config.scan_interval_mid
+    if datetime.time(14, 30) <= now < datetime.time(15, 20):
+        return config.scan_interval_late
+    return 0
+
+
 def _next_aligned_run(interval_minutes: int, anchor: datetime.time) -> datetime.datetime:
     """interval_minutes 주기를 anchor 시각 기준으로 정렬한 다음 실행 시각 반환.
     anchor 이전이면 anchor를, 이후면 anchor + N*interval 중 now 직후 시각을 반환."""
@@ -897,7 +909,22 @@ def main() -> None:
             logger.warning(f"[캐시] 보유 종목 초기화 실패 — 모니터링 비활성: {e}")
 
     interval = config.scan_interval_minutes
-    if interval > 0:
+    use_time_based = any([
+        config.scan_interval_early > 0,
+        config.scan_interval_mid > 0,
+        config.scan_interval_late > 0,
+    ])
+
+    if use_time_based:
+        # 시간대별 동적 스캔 — 메인 루프에서 직접 처리
+        if config.scan_nasdaq:
+            schedule.every().day.at("23:35").do(run_nasdaq_cycle, ctx)
+        logger.info(
+            f"시간대별 스캔: 초반(09~10시) {config.scan_interval_early}분 / "
+            f"중반(10~14:30) {config.scan_interval_mid}분 / "
+            f"후반(14:30~15:20) {config.scan_interval_late}분"
+        )
+    elif interval > 0:
         domestic_anchor = datetime.time(9, 0)
         job_dom = schedule.every(interval).minutes.do(run_domestic_cycle, ctx)
         job_dom.next_run = _next_aligned_run(interval, domestic_anchor)
@@ -949,8 +976,20 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _on_signal)
     signal.signal(signal.SIGINT,  _on_signal)
 
+    _last_domestic_scan: datetime.datetime | None = None
+
     while not stop_event.is_set():
         schedule.run_pending()
+
+        if use_time_based and is_market_open():
+            interval_min = _get_current_scan_interval(config)
+            if interval_min > 0:
+                now_kst = datetime.datetime.now(KST)
+                if (_last_domestic_scan is None or
+                        (now_kst - _last_domestic_scan).total_seconds() >= interval_min * 60):
+                    run_domestic_cycle(ctx)
+                    _last_domestic_scan = datetime.datetime.now(KST)
+
         time.sleep(1)
 
 

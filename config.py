@@ -60,7 +60,10 @@ class Config:
     mock_budget: int        # 모의 운용 예산 KRW (포지션당 예산 = mock_budget / max_positions)
     real_budget: int        # 실전 운용 예산 KRW (포지션당 예산 = real_budget / max_positions)
     real_usd_budget: float  # 실전 해외주식 예산 USD
-    scan_interval_minutes: int  # 스캔 주기(분). 0 = 고정시간(국내 09:05 / 나스닥 23:35)
+    scan_interval_minutes: int  # 스캔 주기(분). 0 = 고정시간(국내 09:05 / 나스닥 23:35) — 시간대별 설정이 없을 때 사용
+    scan_interval_early: int   # 장 초반 09:00~10:00 스캔 주기(분). 0 = 비활성
+    scan_interval_mid: int     # 장 중반 10:00~14:30 스캔 주기(분). 0 = 비활성
+    scan_interval_late: int    # 장 후반 14:30~15:20 스캔 주기(분). 0 = 비활성
     watchlist: tuple        # 커스텀 스캔 종목 리스트. 비어있으면 기본 스캔(전종목/거래량 상위)
     exclude_list: tuple     # 거래 제외 종목 코드 리스트 (모드 무관 적용)
     order_type: str         # "market" | "limit"
@@ -114,6 +117,9 @@ def load_config() -> Config:
         real_budget=int(os.getenv("REAL_BUDGET", "500000")),
         real_usd_budget=float(os.getenv("REAL_USD_BUDGET", "750.0")),
         scan_interval_minutes=int(os.getenv(f"SCAN_INTERVAL_MINUTES_{mode.upper()}", "0")),
+        scan_interval_early=int(os.getenv(f"SCAN_INTERVAL_EARLY_{mode.upper()}", os.getenv("SCAN_INTERVAL_EARLY", "5"))),
+        scan_interval_mid=int(os.getenv(f"SCAN_INTERVAL_MID_{mode.upper()}", os.getenv("SCAN_INTERVAL_MID", "20"))),
+        scan_interval_late=int(os.getenv(f"SCAN_INTERVAL_LATE_{mode.upper()}", os.getenv("SCAN_INTERVAL_LATE", "10"))),
         order_quantity=int(os.getenv(f"ORDER_QUANTITY_{mode.upper()}", os.getenv("ORDER_QUANTITY", "0"))),
         watchlist=tuple(c.strip() for c in os.getenv(f"WATCHLIST_{mode.upper()}", os.getenv("WATCHLIST", "")).split(",") if c.strip()),
         exclude_list=tuple(c.strip() for c in os.getenv(f"EXCLUDE_LIST_{mode.upper()}", os.getenv("EXCLUDE_LIST", "")).split(",") if c.strip()),

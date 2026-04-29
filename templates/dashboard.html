@@ -555,15 +555,27 @@ code { color: #60a5fa; font-size: 11px; }
         </div>
 
         <div style="margin-top:10px">
-          <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px">스캔 주기 <span style="font-weight:normal;text-transform:none;color:#333">0 = 고정시간(국내 09:05 / 나스닥 23:35)</span></div>
-          <div class="cfg-row">
-            <input type="number" id="cfgIntervalVal" class="cfg-input" min="0" max="9999" placeholder="0">
+          <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">스캔 주기 <span style="font-weight:normal;text-transform:none;color:#666;font-size:10px">시간대별 자동 조정 (0 = 비활성)</span></div>
+          <div class="cfg-row" style="flex-wrap:wrap;gap:6px 12px">
+            <span style="font-size:11px;color:#60a5fa;white-space:nowrap">초반 09~10시</span>
+            <input type="number" id="cfgScanEarly" class="cfg-input" style="width:55px" min="0" max="999" placeholder="5">
+            <span class="cfg-hint">분</span>
+            <span style="font-size:11px;color:#4ade80;white-space:nowrap;margin-left:6px">중반 10~14:30</span>
+            <input type="number" id="cfgScanMid" class="cfg-input" style="width:55px" min="0" max="999" placeholder="20">
+            <span class="cfg-hint">분</span>
+            <span style="font-size:11px;color:#fb923c;white-space:nowrap;margin-left:6px">후반 14:30~15:20</span>
+            <input type="number" id="cfgScanLate" class="cfg-input" style="width:55px" min="0" max="999" placeholder="10">
+            <span class="cfg-hint">분</span>
+          </div>
+          <div style="font-size:10px;color:#555;margin-top:6px;display:flex;align-items:center;gap:6px">
+            <span style="color:#666">모두 0이면 → 고정 주기:</span>
+            <input type="number" id="cfgIntervalVal" class="cfg-input" style="width:55px" min="0" max="9999" placeholder="0">
             <select id="cfgUnit" class="cfg-select">
               <option value="1">분</option>
               <option value="60">시간</option>
               <option value="1440">일</option>
             </select>
-            <span class="cfg-hint">현재: <span id="cfgCurrent">—</span></span>
+            <span class="cfg-hint">0 = 09:05 고정 | 현재: <span id="cfgCurrent">—</span></span>
           </div>
         </div>
 
@@ -1330,6 +1342,9 @@ function saveAndRestart() {
   const raw  = parseInt(document.getElementById('cfgIntervalVal').value) || 0;
   const unit = parseInt(document.getElementById('cfgUnit').value);
   const cfg = {
+    scan_interval_early:   parseInt(document.getElementById('cfgScanEarly').value) || 0,
+    scan_interval_mid:     parseInt(document.getElementById('cfgScanMid').value)   || 0,
+    scan_interval_late:    parseInt(document.getElementById('cfgScanLate').value)  || 0,
     scan_interval_minutes: raw * unit,
     watchlist:      document.getElementById('cfgWatchlist').value.trim(),
     exclude_list:   document.getElementById('cfgExcludeList').value.trim(),
@@ -1420,6 +1435,9 @@ function loadSettings() {
       label = `${mins}분마다`;
     }
     document.getElementById('cfgCurrent').textContent = label;
+    document.getElementById('cfgScanEarly').value = d.scan_interval_early ?? 5;
+    document.getElementById('cfgScanMid').value   = d.scan_interval_mid   ?? 20;
+    document.getElementById('cfgScanLate').value  = d.scan_interval_late  ?? 10;
     document.getElementById('cfgBudget').value = d.budget ?? '';
     const usdRow = document.getElementById('cfgUsdBudgetRow');
     if (activeMode === 'real') {
