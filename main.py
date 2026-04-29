@@ -630,7 +630,8 @@ def run_stop_loss_check(ctx: dict) -> None:
                 name  = get_stock_name(stock_code)
                 label = f"{stock_code}({name})" if name else stock_code
                 limit_pct = config.stop_loss_limit_pct or config.stop_loss_pct
-                limit_price = OrderClient._round_to_tick(int(avg_price * (1 - limit_pct / 100)))
+                # 현재가 기준: avg_price 기준이면 이미 더 하락한 경우 지정가가 현재가 위에 위치해 미체결
+                limit_price = OrderClient._round_to_tick(int(current_price * (1 - limit_pct / 100)))
                 lock = ctx.get("order_lock")
                 try:
                     with lock if lock else _null_ctx():
