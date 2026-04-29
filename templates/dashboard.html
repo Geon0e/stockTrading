@@ -606,6 +606,27 @@ code { color: #60a5fa; font-size: 11px; }
           <span class="cfg-hint">회 (0=비활성)</span>
         </div>
 
+        <div style="margin-top:10px;border:1px solid #2a1a1a;border-radius:6px;padding:8px 10px;background:#160b0b">
+          <div style="font-size:10px;color:#ef4444;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">시장 국면 필터 <span style="font-weight:normal;text-transform:none;color:#888;font-size:10px">하락장·RSI 과매도 시 매수 자동 차단</span></div>
+          <div class="cfg-row" style="gap:8px;flex-wrap:wrap">
+            <label class="cfg-toggle"><input type="checkbox" id="cfgRegimeEnabled"><span></span></label>
+            <span style="font-size:12px;color:#ccc;margin-left:4px">활성화</span>
+            <span style="font-size:11px;color:#555;margin-left:12px">지수 ETF</span>
+            <input type="text" id="cfgRegimeIndex" class="cfg-input" style="width:72px" placeholder="069500">
+            <span class="cfg-hint">069500=KODEX200 / 114800=KODEX인버스</span>
+          </div>
+          <div class="cfg-row" style="margin-top:6px;gap:8px;flex-wrap:wrap">
+            <span style="font-size:11px;color:#60a5fa;white-space:nowrap">지수 > MA</span>
+            <input type="number" id="cfgRegimeMa" class="cfg-input" style="width:52px" min="0" max="999" placeholder="60">
+            <span class="cfg-hint">일 (0=비활성)</span>
+            <span style="font-size:11px;color:#f97316;white-space:nowrap;margin-left:10px">RSI <</span>
+            <input type="number" id="cfgRegimeRsiMin" class="cfg-input" style="width:52px" min="0" max="100" step="1" placeholder="40">
+            <span class="cfg-hint">이면 차단 (0=비활성)</span>
+            <input type="number" id="cfgRegimeRsiPer" class="cfg-input" style="width:46px;margin-left:6px" min="0" max="100" placeholder="14">
+            <span class="cfg-hint">일 RSI</span>
+          </div>
+        </div>
+
         <div style="margin-top:10px">
           <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">스캔 범위</div>
           <div class="cfg-row">
@@ -1369,6 +1390,11 @@ function saveAndRestart() {
   if (oq !== null) cfg.order_quantity = oq;  // 0도 허용 (자동계산)
   cfg.matagi_drop_pct  = parseFloat(document.getElementById('cfgMatagiDrop').value) || 2.0;
   cfg.matagi_max_count = parseInt(document.getElementById('cfgMatagiMax').value) || 0;
+  cfg.market_regime_enabled    = document.getElementById('cfgRegimeEnabled').checked;
+  cfg.market_regime_index_code = document.getElementById('cfgRegimeIndex').value.trim() || '069500';
+  cfg.market_regime_ma_period  = parseInt(document.getElementById('cfgRegimeMa').value) || 0;
+  cfg.market_regime_rsi_min    = parseFloat(document.getElementById('cfgRegimeRsiMin').value) || 0;
+  cfg.market_regime_rsi_period = parseInt(document.getElementById('cfgRegimeRsiPer').value) || 14;
   if (activeMode === 'real') {
     const usd = parseFloat(document.getElementById('cfgUsdBudget').value) || 0;
     if (usd > 0) cfg.usd_budget = usd;
@@ -1450,6 +1476,11 @@ function loadSettings() {
     document.getElementById('cfgOrderQty').value = d.order_quantity ?? 0;
     document.getElementById('cfgMatagiDrop').value = d.matagi_drop_pct ?? 2.0;
     document.getElementById('cfgMatagiMax').value  = d.matagi_max_count ?? 2;
+    document.getElementById('cfgRegimeEnabled').checked = !!d.market_regime_enabled;
+    document.getElementById('cfgRegimeIndex').value     = d.market_regime_index_code ?? '069500';
+    document.getElementById('cfgRegimeMa').value        = d.market_regime_ma_period  ?? 60;
+    document.getElementById('cfgRegimeRsiMin').value    = d.market_regime_rsi_min    ?? 40;
+    document.getElementById('cfgRegimeRsiPer').value    = d.market_regime_rsi_period ?? 14;
     document.getElementById('cfgWatchlist').value = d.watchlist ?? '';
     document.getElementById('cfgExcludeList').value = d.exclude_list ?? '';
     document.getElementById('cfgScanAll').checked = !!d.scan_all_stocks;

@@ -73,6 +73,11 @@ class Config:
     morning_stoploss_enabled: bool  # 10:30 전일 손실 종목 손절 활성화 여부
     matagi_drop_pct: float          # 물타기 1차 하락 기준 (%, 1차=×1 / 2차=×2.5 / 3차=×4)
     matagi_max_count: int           # 종목당 최대 물타기 횟수 (0 = 비활성화)
+    market_regime_enabled: bool     # 시장 국면 필터 활성화 (하락장 매수 차단)
+    market_regime_index_code: str   # 지수 프록시 종목 코드 (기본: 069500 = KODEX 200)
+    market_regime_ma_period: int    # 지수 MA 기간 (0 = MA 체크 비활성, 기본 60)
+    market_regime_rsi_period: int   # 지수 RSI 기간 (0 = RSI 체크 비활성, 기본 14)
+    market_regime_rsi_min: float    # RSI 최솟값 — 이 값 미만이면 매수 차단 (기본 40, 0 = 비활성)
 
 
 def load_config() -> Config:
@@ -130,5 +135,10 @@ def load_config() -> Config:
         morning_stoploss_enabled=os.getenv(f"MORNING_STOPLOSS_ENABLED_{mode.upper()}", os.getenv("MORNING_STOPLOSS_ENABLED", "false")).lower() == "true",
         matagi_drop_pct=float(os.getenv(f"MATAGI_DROP_PCT_{mode.upper()}", os.getenv("MATAGI_DROP_PCT", "2.0"))),
         matagi_max_count=int(os.getenv(f"MATAGI_MAX_COUNT_{mode.upper()}", os.getenv("MATAGI_MAX_COUNT", "2"))),
+        market_regime_enabled=os.getenv(f"MARKET_REGIME_ENABLED_{mode.upper()}", os.getenv("MARKET_REGIME_ENABLED", "false" if mode == "mock" else "true")).lower() == "true",
+        market_regime_index_code=os.getenv("MARKET_REGIME_INDEX_CODE", "069500"),
+        market_regime_ma_period=int(os.getenv("MARKET_REGIME_MA_PERIOD", "60")),
+        market_regime_rsi_period=int(os.getenv("MARKET_REGIME_RSI_PERIOD", "14")),
+        market_regime_rsi_min=float(os.getenv("MARKET_REGIME_RSI_MIN", "40")),
         **env,
     )

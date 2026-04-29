@@ -10,6 +10,7 @@ from strategy.base_strategy import BaseStrategy
 from screener.stock_list import fetch_all_stock_codes
 from screener.us_stock_list import fetch_us_stocks
 from screener.name_lookup import get_stock_name
+from screener.market_regime import check_market_regime
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,12 @@ class StockScreener:
         all_stocks=False: 거래량 상위 top_n개만 스캔
         max_workers     : 병렬 스레드 수 (기본 5)
         """
+        # ── 시장 국면 필터 ──────────────────────────────────────────────
+        ok, regime_reason = check_market_regime(self._price_client, token, self._config)
+        if not ok:
+            logger.info(f"[시장필터] 매수 스캔 중단 — {regime_reason}")
+            return []
+
         watchlist = list(self._config.watchlist)
         if watchlist:
             codes = watchlist

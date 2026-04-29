@@ -480,6 +480,11 @@ def api_get_config():
         "morning_stoploss_enabled": env.get(f"MORNING_STOPLOSS_ENABLED_{m}", env.get("MORNING_STOPLOSS_ENABLED", "false")).lower() == "true",
         "matagi_drop_pct": float(env.get(f"MATAGI_DROP_PCT_{m}", env.get("MATAGI_DROP_PCT", "2.0"))),
         "matagi_max_count": int(env.get(f"MATAGI_MAX_COUNT_{m}", env.get("MATAGI_MAX_COUNT", "2"))),
+        "market_regime_enabled": env.get(f"MARKET_REGIME_ENABLED_{m}", env.get("MARKET_REGIME_ENABLED", "false" if mode == "mock" else "true")).lower() == "true",
+        "market_regime_index_code": env.get("MARKET_REGIME_INDEX_CODE", "069500"),
+        "market_regime_ma_period": int(env.get("MARKET_REGIME_MA_PERIOD", "60")),
+        "market_regime_rsi_period": int(env.get("MARKET_REGIME_RSI_PERIOD", "14")),
+        "market_regime_rsi_min": float(env.get("MARKET_REGIME_RSI_MIN", "40")),
         "order_type": env.get(f"ORDER_TYPE_{m}", "market"),
         "limit_order_pct": float(env.get(f"LIMIT_ORDER_PCT_{m}", "1.0")),
     }
@@ -667,6 +672,34 @@ def api_save_restart():
         if val >= 0:
             _write_env_key(f"MATAGI_MAX_COUNT_{mode.upper()}", str(val))
             changes["물타기 최대횟수"] = f"{val}회" if val > 0 else "비활성화"
+
+    if "market_regime_enabled" in cfg:
+        val = bool(cfg["market_regime_enabled"])
+        _write_env_key(f"MARKET_REGIME_ENABLED_{mode.upper()}", "true" if val else "false")
+        changes["시장필터"] = "활성화" if val else "비활성화"
+
+    if "market_regime_index_code" in cfg:
+        val = str(cfg["market_regime_index_code"]).strip()
+        if val:
+            _write_env_key("MARKET_REGIME_INDEX_CODE", val)
+            changes["시장필터 지수"] = val
+
+    if "market_regime_ma_period" in cfg:
+        val = int(cfg["market_regime_ma_period"])
+        if val >= 0:
+            _write_env_key("MARKET_REGIME_MA_PERIOD", str(val))
+            changes["시장필터 MA"] = f"MA{val}" if val > 0 else "비활성"
+
+    if "market_regime_rsi_period" in cfg:
+        val = int(cfg["market_regime_rsi_period"])
+        if val >= 0:
+            _write_env_key("MARKET_REGIME_RSI_PERIOD", str(val))
+
+    if "market_regime_rsi_min" in cfg:
+        val = float(cfg["market_regime_rsi_min"])
+        if val >= 0:
+            _write_env_key("MARKET_REGIME_RSI_MIN", str(val))
+            changes["시장필터 RSI최소"] = f"RSI < {val} 차단" if val > 0 else "비활성"
 
     if "order_type" in cfg:
         val = cfg["order_type"] if cfg["order_type"] in ("market", "limit") else "market"
