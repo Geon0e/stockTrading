@@ -744,6 +744,33 @@ def run_nasdaq_cycle(ctx: dict) -> None:
         logger.error(f"나스닥 사이클 오류: {e}", exc_info=True)
 
 
+def _init_matagi_count(mode: str) -> dict:
+    """오늘 거래 로그에서 물타기 횟수를 복원. 매도 이후 횟수는 0으로 리셋."""
+    today = str(datetime.date.today())
+    count: dict = {}
+    log_path = Path(_LOG_DIR) / f"trades_{mode}.jsonl"
+    if not log_path.exists():
+        return count
+    for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            r = json.loads(line)
+            if not r.get("timestamp", "").startswith(today):
+                continue
+            code = r.get("stock_code")
+            if not code:
+                continue
+            if r.get("action") == "SELL":
+                count.pop(code, None)
+            elif r.get("action") == "BUY" and r.get("signal_type") == "물타기":
+                count[code] = count.get(code, 0) + 1
+        except Exception:
+            pass
+    return count
+
+
 def _start_ws_price_writer(rtp, stop_event: threading.Event) -> None:
     """WebSocket 가격 캐시를 logs/ws_prices_real.json 에 1초마다 기록.
     대시보드가 이 파일을 읽어 SSE로 전달하므로 WS 연결을 중복으로 열지 않아도 된다."""
@@ -826,6 +853,7 @@ def main() -> None:
         "order_lock":          order_lock,
         "budget_lock":         budget_lock,
         "holdings_cache":      {},  # {code: {"qty": int, "avg_price": float}} — 매수/매도 시 갱신
+        "matagi_count":        {},  # {code: int} — 종목당 물타기 횟수 (재시작 시 로그에서 복원)
     }
 
     # real 모드: WebSocket 실시간 시세 초기화
@@ -858,6 +886,9 @@ def main() -> None:
                 code: {"qty": info["qty"], "avg_price": float(info.get("avg_price") or 0)}
                 for code, info in _init_holdings.items()
             }
+            ctx["matagi_count"] = _init_matagi_count(config.mode)
+            if ctx["matagi_count"]:
+                logger.info(f"[물타기] 오늘 물타기 횟수 복원: {ctx['matagi_count']}")
             logger.info(f"[캐시] 보유 종목 {len(_init_holdings)}개 초기화")
             if ctx["realtime_price"] and _init_holdings:
                 ctx["realtime_price"].subscribe(list(_init_holdings.keys()))

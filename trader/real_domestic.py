@@ -82,6 +82,7 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
                 _traded_today(ctx).add(stock_code)
                 del holdings[stock_code]
                 ctx["holdings_cache"].pop(stock_code, None)
+                ctx.get("matagi_count", {}).pop(stock_code, None)
                 if ctx.get("realtime_price"):
                     ctx["realtime_price"].unsubscribe([stock_code])
                 add_daily_budget(ctx, int(exec_price_f * qty),
@@ -117,6 +118,7 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
                                     profit_rate=actual_profit_pct)
             del holdings[stock_code]
             ctx["holdings_cache"].pop(stock_code, None)
+            ctx.get("matagi_count", {}).pop(stock_code, None)
             if ctx.get("realtime_price"):
                 ctx["realtime_price"].unsubscribe([stock_code])
             add_daily_budget(ctx, int(exec_price_f * qty),
@@ -162,18 +164,26 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
             if avg_p <= 0 or price >= avg_p:
                 logger.debug(f"[실전] 보유 중 수익 종목 추가매수 스킵: {code} | 매입가: {avg_p:,.0f}원 | 현재가: {price:,}원")
                 continue
-            # 물타기 추가 조건 확인
+            # 최대 물타기 횟수 초과 시 스킵
+            matagi_count = ctx.get("matagi_count", {})
+            stage = matagi_count.get(code, 0)
+            max_count = ctx["config"].matagi_max_count
+            _name = get_stock_name(code)
+            _label = f"{code}({_name})" if _name else code
+            if max_count > 0 and stage >= max_count:
+                logger.info(f"[실전] 물타기 횟수 초과 [{_label}]: {stage}/{max_count}회 완료")
+                continue
+            # 단계별 물타기 조건 확인
             ok, reason = check_matagi_conditions(
                 ctx["price_client"], code, token, avg_p, price,
                 drop_pct=ctx["config"].matagi_drop_pct,
+                matagi_stage=stage,
             )
-            _name = get_stock_name(code)
-            _label = f"{code}({_name})" if _name else code
             if not ok:
                 logger.info(f"[실전] 물타기 스킵 [{_label}]: {reason}")
                 continue
             signal_type = "물타기"
-            logger.info(f"[실전] 물타기 조건 통과 [{_label}]: {reason}")
+            logger.info(f"[실전] 물타기 {stage + 1}차 조건 통과 [{_label}]: {reason}")
 
         # 예산 초과 종목 스킵
         if price > per_position:
@@ -233,6 +243,11 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
         )
         holdings[code] = {"qty": quantity, "avg_price": exec_price}
         ctx["holdings_cache"][code] = {"qty": quantity, "avg_price": float(exec_price)}
+        # 물타기였으면 단계 카운터 증가
+        if signal_type == "물타기":
+            mc = ctx.get("matagi_count", {})
+            mc[code] = mc.get(code, 0) + 1
+            ctx["matagi_count"] = mc
         cost = int(float(exec_price) * quantity)
         deduct_daily_budget(ctx, cost)
         if ctx.get("realtime_price"):

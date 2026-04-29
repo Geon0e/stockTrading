@@ -475,7 +475,8 @@ def api_get_config():
         "monitor_interval_seconds": int(env.get(f"MONITOR_INTERVAL_SECONDS_{m}", env.get("MONITOR_INTERVAL_SECONDS", "60"))),
         "morning_sell_profit_pct": float(env.get(f"MORNING_SELL_PROFIT_PCT_{m}", env.get("MORNING_SELL_PROFIT_PCT", "0"))),
         "morning_stoploss_enabled": env.get(f"MORNING_STOPLOSS_ENABLED_{m}", env.get("MORNING_STOPLOSS_ENABLED", "false")).lower() == "true",
-        "matagi_drop_pct": float(env.get(f"MATAGI_DROP_PCT_{m}", env.get("MATAGI_DROP_PCT", "1.5"))),
+        "matagi_drop_pct": float(env.get(f"MATAGI_DROP_PCT_{m}", env.get("MATAGI_DROP_PCT", "2.0"))),
+        "matagi_max_count": int(env.get(f"MATAGI_MAX_COUNT_{m}", env.get("MATAGI_MAX_COUNT", "2"))),
         "order_type": env.get(f"ORDER_TYPE_{m}", "market"),
         "limit_order_pct": float(env.get(f"LIMIT_ORDER_PCT_{m}", "1.0")),
     }
@@ -649,7 +650,13 @@ def api_save_restart():
         val = float(cfg["matagi_drop_pct"])
         if val >= 0:
             _write_env_key(f"MATAGI_DROP_PCT_{mode.upper()}", str(val))
-            changes["물타기 하락 기준"] = f"-{val}%"
+            changes["물타기 1차 기준"] = f"-{val}% / -{val*2.5:.0f}% / -{val*4:.0f}%"
+
+    if "matagi_max_count" in cfg:
+        val = int(cfg["matagi_max_count"])
+        if val >= 0:
+            _write_env_key(f"MATAGI_MAX_COUNT_{mode.upper()}", str(val))
+            changes["물타기 최대횟수"] = f"{val}회" if val > 0 else "비활성화"
 
     if "order_type" in cfg:
         val = cfg["order_type"] if cfg["order_type"] in ("market", "limit") else "market"

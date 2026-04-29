@@ -68,7 +68,8 @@ class Config:
     monitor_interval_seconds: int  # 손절/익절 모니터링 주기(초). 기본 60초
     morning_sell_profit_pct: float  # 장초 전일 보유 종목 익절 기준 (%, 0 = 비활성화)
     morning_stoploss_enabled: bool  # 10:30 전일 손실 종목 손절 활성화 여부
-    matagi_drop_pct: float          # 물타기 최소 하락률 (%, 첫 매수 대비)
+    matagi_drop_pct: float          # 물타기 1차 하락 기준 (%, 1차=×1 / 2차=×2.5 / 3차=×4)
+    matagi_max_count: int           # 종목당 최대 물타기 횟수 (0 = 비활성화)
 
 
 def load_config() -> Config:
@@ -121,6 +122,7 @@ def load_config() -> Config:
         monitor_interval_seconds=int(os.getenv(f"MONITOR_INTERVAL_SECONDS_{mode.upper()}", os.getenv("MONITOR_INTERVAL_SECONDS", "1" if mode == "real" else "60"))),
         morning_sell_profit_pct=float(os.getenv(f"MORNING_SELL_PROFIT_PCT_{mode.upper()}", os.getenv("MORNING_SELL_PROFIT_PCT", "0"))),
         morning_stoploss_enabled=os.getenv(f"MORNING_STOPLOSS_ENABLED_{mode.upper()}", os.getenv("MORNING_STOPLOSS_ENABLED", "false")).lower() == "true",
-        matagi_drop_pct=float(os.getenv(f"MATAGI_DROP_PCT_{mode.upper()}", os.getenv("MATAGI_DROP_PCT", "1.5"))),
+        matagi_drop_pct=float(os.getenv(f"MATAGI_DROP_PCT_{mode.upper()}", os.getenv("MATAGI_DROP_PCT", "2.0"))),
+        matagi_max_count=int(os.getenv(f"MATAGI_MAX_COUNT_{mode.upper()}", os.getenv("MATAGI_MAX_COUNT", "2"))),
         **env,
     )
