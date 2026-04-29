@@ -821,21 +821,25 @@ def main() -> None:
 
     # real 모드: 봇 시작 시 KIS API 체결 내역으로 당일 예산 현황 초기화
     if config.mode == "real":
+        _init_token = ctx["token_manager"].get_valid_token()
         try:
-            _init_token = ctx["token_manager"].get_valid_token()
             _executions = ctx["order_client"].get_today_ccld(_init_token)
             init_daily_from_api(ctx, _executions)
-            # 현재 보유 종목 WebSocket 구독 + holdings_cache 초기화
+        except Exception as e:
+            logger.warning(f"[금일현황] KIS API 초기화 실패 — 로컬 로그로 폴백: {e}")
+        # holdings_cache 초기화 — 예산 초기화 실패와 독립적으로 항상 실행
+        try:
             _init_holdings = ctx["order_client"].get_holdings(_init_token)
             ctx["holdings_cache"] = {
                 code: {"qty": info["qty"], "avg_price": float(info.get("avg_price") or 0)}
                 for code, info in _init_holdings.items()
             }
+            logger.info(f"[캐시] 보유 종목 {len(_init_holdings)}개 초기화")
             if ctx["realtime_price"] and _init_holdings:
                 ctx["realtime_price"].subscribe(list(_init_holdings.keys()))
                 logger.info(f"[실시간] 보유 {len(_init_holdings)}개 종목 구독 시작")
         except Exception as e:
-            logger.warning(f"[금일현황] KIS API 초기화 실패 — 로컬 로그로 폴백: {e}")
+            logger.warning(f"[캐시] 보유 종목 초기화 실패 — 모니터링 비활성: {e}")
 
     interval = config.scan_interval_minutes
     if interval > 0:
