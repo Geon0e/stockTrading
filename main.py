@@ -744,6 +744,27 @@ def run_nasdaq_cycle(ctx: dict) -> None:
         logger.error(f"나스닥 사이클 오류: {e}", exc_info=True)
 
 
+def _start_ws_price_writer(rtp, stop_event: threading.Event) -> None:
+    """WebSocket 가격 캐시를 logs/ws_prices_real.json 에 1초마다 기록.
+    대시보드가 이 파일을 읽어 SSE로 전달하므로 WS 연결을 중복으로 열지 않아도 된다."""
+    path = Path(_LOG_DIR) / "ws_prices_real.json"
+
+    def _loop():
+        logger.info("[WS기록] 가격 파일 기록 스레드 시작")
+        while not stop_event.is_set():
+            try:
+                prices = rtp.get_prices()
+                if prices:
+                    path.write_text(json.dumps(prices, ensure_ascii=False), encoding="utf-8")
+            except Exception as e:
+                logger.debug(f"[WS기록] 오류: {e}")
+            stop_event.wait(1)
+        path.unlink(missing_ok=True)
+        logger.info("[WS기록] 가격 파일 기록 스레드 종료")
+
+    threading.Thread(target=_loop, name="ws-price-writer", daemon=True).start()
+
+
 def _next_aligned_run(interval_minutes: int, anchor: datetime.time) -> datetime.datetime:
     """interval_minutes 주기를 anchor 시각 기준으로 정렬한 다음 실행 시각 반환.
     anchor 이전이면 anchor를, 이후면 anchor + N*interval 중 now 직후 시각을 반환."""
@@ -818,6 +839,9 @@ def main() -> None:
             logger.info("[실시간] WebSocket 시세 클라이언트 시작")
         except Exception as e:
             logger.warning(f"[실시간] WebSocket 초기화 실패: {e}")
+
+    if ctx["realtime_price"]:
+        _start_ws_price_writer(ctx["realtime_price"], stop_event)
 
     # real 모드: 봇 시작 시 KIS API 체결 내역으로 당일 예산 현황 초기화
     if config.mode == "real":

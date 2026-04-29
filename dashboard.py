@@ -4,12 +4,10 @@ import hmac
 import json
 import logging
 import os
-import queue
 import re
 import secrets
 import signal
 import subprocess
-import threading
 import time
 from pathlib import Path
 
@@ -854,34 +852,6 @@ def api_trades_summary():
     return jsonify({"total": len(records), "buys": len(buys), "sells": len(sells), "by_signal": by_signal})
 
 
-# ── KIS 실시간 WebSocket 매니저 ──────────────────────────────────────────────
-_ws_manager: object = None
-_ws_manager_lock = threading.Lock()
-
-
-def _get_ws_manager():
-    """REAL_APP_KEY/REAL_APP_SECRET로 KisRealtimePrice 인스턴스를 지연 초기화."""
-    global _ws_manager
-    if _ws_manager is not None:
-        return _ws_manager
-    with _ws_manager_lock:
-        if _ws_manager is not None:
-            return _ws_manager
-        env = _read_env()
-        app_key = env.get("REAL_APP_KEY", "")
-        app_secret = env.get("REAL_APP_SECRET", "")
-        if not app_key or not app_secret:
-            return None
-        try:
-            from market.kis_websocket import KisRealtimePrice
-            mgr = KisRealtimePrice(app_key, app_secret)
-            mgr.start()
-            _ws_manager = mgr
-        except Exception as e:
-            logging.getLogger(__name__).error(f"[KIS WS] 초기화 실패: {e}")
-    return _ws_manager
-
-
 def _load_avg_prices() -> dict:
     """holdings_real.json 스냅샷에서 {code: avg_price} 맵 반환."""
     snapshot_path = _BASE / "logs/holdings_real.json"
@@ -898,83 +868,76 @@ def _load_avg_prices() -> dict:
         return {}
 
 
-def _build_initial_prices(mgr, avg_prices: dict) -> list:
-    """현재 캐시된 가격으로 초기 포트폴리오 가격 데이터 구성."""
-    prices = mgr.get_prices()
-    result = []
-    for code, avg_price in avg_prices.items():
-        pd = prices.get(code)
-        if not pd:
-            continue
-        price = pd["price"]
-        profit_pct = round((price - avg_price) / avg_price * 100, 2)
-        result.append({
-            "code": code,
-            "current_price": price,
-            "profit_pct": profit_pct,
-            "prdy_ctrt": pd.get("prdy_ctrt", 0),
-        })
-    return result
+def _load_ws_prices() -> dict:
+    """봇이 기록한 ws_prices_real.json 에서 {code: {price, prdy_ctrt}} 맵 반환."""
+    path = _BASE / "logs/ws_prices_real.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
 
 
 @app.route("/stream/portfolio")
 def stream_portfolio():
-    """실전 포트폴리오 실시간 시세 SSE 스트림 (실전 모드 전용)."""
-    mgr = _get_ws_manager()
-    if mgr is None:
-        return Response(
-            "event: initial\ndata: []\n\n",
-            content_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
-
+    """실전 포트폴리오 실시간 시세 SSE 스트림.
+    봇이 기록한 ws_prices_real.json 파일을 1초마다 읽어 전달한다."""
     def generate():
         avg_prices = _load_avg_prices()
         if not avg_prices:
             yield "event: initial\ndata: []\n\n"
             return
 
-        mgr.subscribe(list(avg_prices.keys()))
-        q = mgr.add_sse_queue()
-        try:
-            # 초기 캐시 데이터 전송
-            initial = _build_initial_prices(mgr, avg_prices)
-            yield f"event: initial\ndata: {json.dumps(initial, ensure_ascii=False)}\n\n"
+        # 초기 데이터
+        ws_prices = _load_ws_prices()
+        initial = []
+        for code, avg_price in avg_prices.items():
+            pd = ws_prices.get(code)
+            if not pd:
+                continue
+            price = pd["price"]
+            profit_pct = round((price - avg_price) / avg_price * 100, 2)
+            initial.append({
+                "code": code,
+                "current_price": price,
+                "profit_pct": profit_pct,
+                "prdy_ctrt": pd.get("prdy_ctrt", 0),
+            })
+        yield f"event: initial\ndata: {json.dumps(initial, ensure_ascii=False)}\n\n"
 
-            snapshot_reload_at = time.time() + 60
-            while True:
-                # 60초마다 스냅샷 재로드 — 매수/매도로 보유 종목이 바뀔 수 있음
-                if time.time() >= snapshot_reload_at:
-                    new_avg = _load_avg_prices()
-                    if new_avg:
-                        added = [c for c in new_avg if c not in avg_prices]
-                        removed = [c for c in avg_prices if c not in new_avg]
-                        if added:
-                            mgr.subscribe(added)
-                        if removed:
-                            mgr.unsubscribe(removed)
-                        avg_prices = new_avg
-                    snapshot_reload_at = time.time() + 60
+        prev_prices: dict = {item["code"]: item["current_price"] for item in initial}
+        snapshot_reload_at = time.time() + 60
 
-                try:
-                    item = q.get(timeout=25)
-                    code = item["code"]
-                    avg_price = avg_prices.get(code, 0)
-                    if avg_price <= 0:
-                        continue
-                    price = item["price"]
-                    profit_pct = round((price - avg_price) / avg_price * 100, 2)
-                    data = {
-                        "code": code,
-                        "current_price": price,
-                        "profit_pct": profit_pct,
-                        "prdy_ctrt": item.get("prdy_ctrt", 0),
-                    }
-                    yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
-                except queue.Empty:
-                    yield ": heartbeat\n\n"
-        finally:
-            mgr.remove_sse_queue(q)
+        while True:
+            time.sleep(1)
+
+            if time.time() >= snapshot_reload_at:
+                avg_prices = _load_avg_prices()
+                snapshot_reload_at = time.time() + 60
+
+            ws_prices = _load_ws_prices()
+            sent_any = False
+            for code, avg_price in avg_prices.items():
+                pd = ws_prices.get(code)
+                if not pd:
+                    continue
+                price = pd["price"]
+                if prev_prices.get(code) == price:
+                    continue
+                profit_pct = round((price - avg_price) / avg_price * 100, 2)
+                data = {
+                    "code": code,
+                    "current_price": price,
+                    "profit_pct": profit_pct,
+                    "prdy_ctrt": pd.get("prdy_ctrt", 0),
+                }
+                yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+                prev_prices[code] = price
+                sent_any = True
+
+            if not sent_any:
+                yield ": heartbeat\n\n"
 
     return Response(
         stream_with_context(generate()),
