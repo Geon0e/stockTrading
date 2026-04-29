@@ -1,3 +1,4 @@
+import datetime
 import logging
 import requests
 from decimal import Decimal
@@ -20,11 +21,16 @@ class PriceClient:
 
     def fetch_closing_prices(self, stock_code: str, count: int, token: str) -> List[Decimal]:
         """일별 종가를 오래된 순으로 반환 (이동평균 계산용)"""
+        # 거래일 count개 확보를 위해 달력일 기준 여유있게 조회 (거래일 ≈ 달력일 × 5/7)
+        end_date = datetime.date.today()
+        start_date = end_date - datetime.timedelta(days=int(count * 2))
         params = {
             "FID_COND_MRKT_DIV_CODE": "J",
             "FID_INPUT_ISCD": stock_code,
             "FID_PERIOD_DIV_CODE": "D",
             "FID_ORG_ADJ_PRC": "0",
+            "FID_INPUT_DATE_1": start_date.strftime("%Y%m%d"),
+            "FID_INPUT_DATE_2": end_date.strftime("%Y%m%d"),
         }
         url = f"{self._config.base_url}{_ENDPOINT}"
         resp = requests.get(url, headers=self._headers(token), params=params, timeout=10)
@@ -47,11 +53,15 @@ class PriceClient:
 
     def fetch_ohlcv(self, stock_code: str, count: int, token: str) -> List[dict]:
         """일별 OHLCV를 오래된 순으로 반환. keys: open, high, low, close, volume"""
+        end_date = datetime.date.today()
+        start_date = end_date - datetime.timedelta(days=int(count * 2))
         params = {
             "FID_COND_MRKT_DIV_CODE": "J",
             "FID_INPUT_ISCD": stock_code,
             "FID_PERIOD_DIV_CODE": "D",
             "FID_ORG_ADJ_PRC": "0",
+            "FID_INPUT_DATE_1": start_date.strftime("%Y%m%d"),
+            "FID_INPUT_DATE_2": end_date.strftime("%Y%m%d"),
         }
         url = f"{self._config.base_url}{_ENDPOINT}"
         resp = requests.get(url, headers=self._headers(token), params=params, timeout=10)
