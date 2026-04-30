@@ -52,7 +52,9 @@ class KisRealtimePrice:
     def stop(self) -> None:
         self._running = False
         if self._ws:
-            self._ws.close()
+            self._ws.close()  # 서버에 close frame 전송
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=5)
 
     def subscribe(self, codes: list) -> None:
         """종목 코드 목록 구독 추가 (실행 중에도 가능)"""

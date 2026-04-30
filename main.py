@@ -992,6 +992,13 @@ def main() -> None:
 
         time.sleep(1)
 
+    # 메인 루프 종료 후 WebSocket 명시적 종료 (KIS 서버에 close frame 전송)
+    rtp = ctx.get("realtime_price")
+    if rtp:
+        logger.info("WebSocket 연결 종료 중...")
+        rtp.stop()
+        logger.info("WebSocket 연결 종료 완료")
+
 
 if __name__ == "__main__":
     main()
