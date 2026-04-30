@@ -144,6 +144,17 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
         return 0
     per_position = min(config.real_budget // config.max_positions, remaining)
 
+    # 이전 사이클 scan_thread가 남아있으면 정리 (join timeout 초과 잔존 방지)
+    _prev_thread: threading.Thread | None = ctx.pop("_scan_thread", None)
+    _prev_stop: threading.Event | None    = ctx.pop("_scan_stop_event", None)
+    if _prev_thread and _prev_thread.is_alive():
+        logger.debug("[실전] 이전 스캔 스레드 정리 중...")
+        if _prev_stop:
+            _prev_stop.set()
+        _prev_thread.join(timeout=35)
+        if _prev_thread.is_alive():
+            logger.warning("[실전] 이전 스캔 스레드가 35초 후에도 실행 중 — 강제 진행")
+
     # 스캔을 백그라운드 스레드로 돌리고 신호 감지 즉시 매수 처리 (파이프라인)
     signal_queue: queue.Queue = queue.Queue()
     stop_event = threading.Event()
@@ -293,7 +304,11 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
 
     # capacity 채워지면 스캐너 조기 종료
     stop_event.set()
-    scan_thread.join(timeout=10)
+    scan_thread.join(timeout=35)  # API call 최악 케이스(페이지네이션 2회×10s) 커버
+    if scan_thread.is_alive():
+        # 35초 후에도 살아있으면 다음 사이클에서 정리
+        ctx["_scan_thread"]      = scan_thread
+        ctx["_scan_stop_event"]  = stop_event
 
     if skipped_budget:
         logger.info(f"[실전] 예산 초과로 스킵된 종목: {skipped_budget}개 (포지션당 {per_position:,}원 초과)")
