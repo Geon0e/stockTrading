@@ -189,8 +189,12 @@ class OrderClient:
         url = f"{self._config.base_url}{_EXECUTION_ENDPOINT}"
         for attempt in range(retries):
             time.sleep(delay)
-            resp = requests.get(url, headers=self._headers(tr_id, token), params=params, timeout=10)
-            resp.raise_for_status()
+            try:
+                resp = requests.get(url, headers=self._headers(tr_id, token), params=params, timeout=10)
+                resp.raise_for_status()
+            except requests.HTTPError as e:
+                logger.warning(f"체결 조회 HTTP 오류 [{stock_code}] ({attempt + 1}/{retries}): {e}")
+                continue  # retry
             data = resp.json()
             items = data.get("output1", [])
             if items:
