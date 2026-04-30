@@ -20,78 +20,129 @@ class PriceClient:
         self._config = config
 
     def fetch_closing_prices(self, stock_code: str, count: int, token: str) -> List[Decimal]:
-        """일별 종가를 오래된 순으로 반환 (이동평균 계산용)"""
-        # 거래일 count개 확보를 위해 달력일 기준 여유있게 조회 (거래일 ≈ 달력일 × 5/7)
+        """일별 종가를 오래된 순으로 반환 (이동평균 계산용).
+
+        KIS inquire-daily-price API는 호출당 최대 30행 반환 → count > 30이면
+        end_date를 앞당겨 가며 페이지네이션으로 충분한 데이터를 수집한다.
+        """
+        _MAX_PER_CALL = 30  # KIS API 호출당 최대 반환 행수
+        _SAFETY_LIMIT = datetime.date.today() - datetime.timedelta(days=365 * 2)
+
+        # 최신순(내림차순)으로 누적
+        accumulated: list = []  # [(date_str, Decimal), ...]
         end_date = datetime.date.today()
-        start_date = end_date - datetime.timedelta(days=int(count * 2))
-        params = {
-            "FID_COND_MRKT_DIV_CODE": "J",
-            "FID_INPUT_ISCD": stock_code,
-            "FID_PERIOD_DIV_CODE": "D",
-            "FID_ORG_ADJ_PRC": "0",
-            "FID_INPUT_DATE_1": start_date.strftime("%Y%m%d"),
-            "FID_INPUT_DATE_2": end_date.strftime("%Y%m%d"),
-        }
         url = f"{self._config.base_url}{_ENDPOINT}"
-        resp = requests.get(url, headers=self._headers(token), params=params, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
 
-        if data.get("rt_cd") != "0":
-            raise RuntimeError(f"가격 조회 실패 [{stock_code}]: {data.get('msg1')}")
+        while len(accumulated) < count:
+            window = max(_MAX_PER_CALL * 2, 60)
+            start_date = end_date - datetime.timedelta(days=window)
+            params = {
+                "FID_COND_MRKT_DIV_CODE": "J",
+                "FID_INPUT_ISCD": stock_code,
+                "FID_PERIOD_DIV_CODE": "D",
+                "FID_ORG_ADJ_PRC": "0",
+                "FID_INPUT_DATE_1": start_date.strftime("%Y%m%d"),
+                "FID_INPUT_DATE_2": end_date.strftime("%Y%m%d"),
+            }
+            resp = requests.get(url, headers=self._headers(token), params=params, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
 
-        # KIS API는 최신순(내림차순) 반환 → 오래된 순으로 뒤집기
-        rows = data.get("output", [])
-        prices = [Decimal(row["stck_clpr"]) for row in rows if row.get("stck_clpr")]
+            if data.get("rt_cd") != "0":
+                raise RuntimeError(f"가격 조회 실패 [{stock_code}]: {data.get('msg1')}")
+
+            rows = data.get("output", [])
+            batch = [
+                (row["stck_bsop_date"], Decimal(row["stck_clpr"]))
+                for row in rows
+                if row.get("stck_clpr") and row.get("stck_bsop_date")
+            ]
+            if not batch:
+                break
+
+            accumulated.extend(batch)
+
+            # 다음 페이지: 이번 배치에서 가장 오래된 날짜 전날부터
+            oldest_str = batch[-1][0]  # YYYYMMDD, 내림차순이므로 마지막이 가장 오래됨
+            oldest_date = datetime.datetime.strptime(oldest_str, "%Y%m%d").date()
+            end_date = oldest_date - datetime.timedelta(days=1)
+
+            if end_date < _SAFETY_LIMIT:
+                break
+
+        prices = [price for _, price in accumulated[:count]]
 
         if len(prices) < count:
             raise RuntimeError(f"데이터 부족: {count}개 필요, {len(prices)}개 조회됨")
 
-        prices = prices[:count]
-        prices.reverse()
+        prices.reverse()  # 최신순 → 오래된 순
         return prices
 
     def fetch_ohlcv(self, stock_code: str, count: int, token: str) -> List[dict]:
-        """일별 OHLCV를 오래된 순으로 반환. keys: open, high, low, close, volume"""
+        """일별 OHLCV를 오래된 순으로 반환. keys: open, high, low, close, volume
+
+        KIS API 30행 제한 → count > 30이면 페이지네이션으로 수집.
+        """
+        _MAX_PER_CALL = 30
+        _SAFETY_LIMIT = datetime.date.today() - datetime.timedelta(days=365 * 2)
+
+        accumulated: list = []  # [(date_str, dict), ...] 최신순
         end_date = datetime.date.today()
-        start_date = end_date - datetime.timedelta(days=int(count * 2))
-        params = {
-            "FID_COND_MRKT_DIV_CODE": "J",
-            "FID_INPUT_ISCD": stock_code,
-            "FID_PERIOD_DIV_CODE": "D",
-            "FID_ORG_ADJ_PRC": "0",
-            "FID_INPUT_DATE_1": start_date.strftime("%Y%m%d"),
-            "FID_INPUT_DATE_2": end_date.strftime("%Y%m%d"),
-        }
         url = f"{self._config.base_url}{_ENDPOINT}"
-        resp = requests.get(url, headers=self._headers(token), params=params, timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
 
-        if data.get("rt_cd") != "0":
-            raise RuntimeError(f"OHLCV 조회 실패 [{stock_code}]: {data.get('msg1')}")
+        while len(accumulated) < count:
+            window = max(_MAX_PER_CALL * 2, 60)
+            start_date = end_date - datetime.timedelta(days=window)
+            params = {
+                "FID_COND_MRKT_DIV_CODE": "J",
+                "FID_INPUT_ISCD": stock_code,
+                "FID_PERIOD_DIV_CODE": "D",
+                "FID_ORG_ADJ_PRC": "0",
+                "FID_INPUT_DATE_1": start_date.strftime("%Y%m%d"),
+                "FID_INPUT_DATE_2": end_date.strftime("%Y%m%d"),
+            }
+            resp = requests.get(url, headers=self._headers(token), params=params, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
 
-        rows = data.get("output", [])
-        result = []
-        for row in rows:
-            try:
-                c = int(row.get("stck_clpr") or 0)
-                if c <= 0:
-                    continue
-                result.append({
-                    "open":   int(row.get("stck_oprc") or 0),
-                    "high":   int(row.get("stck_hgpr") or 0),
-                    "low":    int(row.get("stck_lwpr") or 0),
-                    "close":  c,
-                    "volume": int(row.get("acml_vol") or 0),
-                })
-            except (ValueError, TypeError):
-                pass
+            if data.get("rt_cd") != "0":
+                raise RuntimeError(f"OHLCV 조회 실패 [{stock_code}]: {data.get('msg1')}")
+
+            rows = data.get("output", [])
+            batch = []
+            for row in rows:
+                try:
+                    c = int(row.get("stck_clpr") or 0)
+                    d = row.get("stck_bsop_date", "")
+                    if c <= 0 or not d:
+                        continue
+                    batch.append((d, {
+                        "open":   int(row.get("stck_oprc") or 0),
+                        "high":   int(row.get("stck_hgpr") or 0),
+                        "low":    int(row.get("stck_lwpr") or 0),
+                        "close":  c,
+                        "volume": int(row.get("acml_vol") or 0),
+                    }))
+                except (ValueError, TypeError):
+                    pass
+
+            if not batch:
+                break
+
+            accumulated.extend(batch)
+
+            oldest_str = batch[-1][0]
+            oldest_date = datetime.datetime.strptime(oldest_str, "%Y%m%d").date()
+            end_date = oldest_date - datetime.timedelta(days=1)
+
+            if end_date < _SAFETY_LIMIT:
+                break
+
+        result = [bar for _, bar in accumulated[:count]]
 
         if len(result) < count:
             raise RuntimeError(f"OHLCV 데이터 부족: {count}개 필요, {len(result)}개 조회됨")
 
-        result = result[:count]
         result.reverse()  # 최신순 → 오래된 순
         return result
 

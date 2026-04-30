@@ -9,6 +9,10 @@ if [ -n "$EXISTING" ]; then
 fi
 rm -f "$PID_FILE"
 
+if [ -f .env ]; then
+    set -a; source .env; set +a
+fi
+
 nohup .venv/bin/python dashboard.py > logs/dashboard.log 2>&1 &
 echo $! > "$PID_FILE"
 echo "대시보드 시작 (PID: $!) → http://localhost:8383"
