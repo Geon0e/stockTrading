@@ -47,8 +47,8 @@ header {
 .mode-lbl { font-size: 11px; font-weight: bold; color: #888; }
 .mode-lbl.mock-lbl { color: #a78bfa; }
 .mode-lbl.real-lbl { color: #4ade80; }
-.pid  { font-size: 10px; color: #444; }
-.ts   { font-size: 11px; color: #444; }
+.pid  { font-size: 10px; color: #888; }
+.ts   { font-size: 11px; color: #888; }
 
 /* ── Bot control buttons ── */
 .bot-controls { margin-left: auto; display: flex; gap: 8px; align-items: center; }
@@ -478,7 +478,7 @@ code { color: #60a5fa; font-size: 11px; }
       <div class="cfg-section">
         <div class="cfg-title" style="display:flex;align-items:center;gap:8px">
           <span>일별 현황</span>
-          <span id="dailyDate" style="font-size:11px;color:#444;font-weight:normal;margin-left:4px"></span>
+          <span id="dailyDate" style="font-size:11px;color:#888;font-weight:normal;margin-left:4px"></span>
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
@@ -531,7 +531,7 @@ code { color: #60a5fa; font-size: 11px; }
         <select id="tradesDateFilter" class="cfg-select" style="font-size:12px;padding:3px 7px" onchange="loadTrades()">
           <option value="">전체 (최근 200건)</option>
         </select>
-        <span id="tradesDateCount" style="font-size:11px;color:#444"></span>
+        <span id="tradesDateCount" style="font-size:11px;color:#888"></span>
       </div>
       <div class="tbl-wrap">
         <table>
@@ -1150,12 +1150,12 @@ function loadTrades() {
       const nameMain = r.stock_name
         ? `<span style="font-size:13px;color:#e0e0e0;font-weight:bold">${esc(r.stock_name)}</span>`
         : `<span style="font-size:13px;color:#60a5fa;font-weight:bold">${esc(r.stock_code)}</span>`;
-      const codeSub = r.stock_name ? `<br><span style="color:#444;font-size:10px">${esc(r.stock_code)}</span>` : '';
+      const codeSub = r.stock_name ? `<br><span style="color:#888;font-size:10px">${esc(r.stock_code)}</span>` : '';
       const profit  = r.profit_rate_pct != null
         ? `<span style="color:${r.profit_rate_pct>=0?'#22c55e':'#ef4444'};font-size:10px;margin-left:4px">${r.profit_rate_pct>=0?'+':''}${r.profit_rate_pct.toFixed(2)}%</span>` : '';
       const tr = document.createElement('tr');
       tr.innerHTML =
-        `<td style="color:#444">${fmtTime(r.timestamp)}</td>` +
+        `<td style="color:#888">${fmtTime(r.timestamp)}</td>` +
         `<td class="${isBuy?'ab':'as'}">${isBuy?'▲':'▼'} ${esc(r.action)}</td>` +
         `<td>${nameMain}${codeSub}</td>` +
         `<td>${Number(r.quantity)}</td>` +
@@ -1327,14 +1327,14 @@ function loadPortfolio() {
     tb.innerHTML = '';
     if (!items.length) {
       const tr = document.createElement('tr');
-      tr.innerHTML = '<td colspan="5" style="color:#444;text-align:center;padding:20px">보유 종목 없음</td>';
+      tr.innerHTML = '<td colspan="5" style="color:#888;text-align:center;padding:20px">보유 종목 없음</td>';
       tb.appendChild(tr);
       disconnectPfSse();
       return;
     }
     items.forEach(h => {
       const nameMain = h.name
-        ? `<span style="font-size:13px;color:#e0e0e0;font-weight:bold">${h.name}</span><br><span style="color:#444;font-size:10px">${h.code}</span>`
+        ? `<span style="font-size:13px;color:#e0e0e0;font-weight:bold">${h.name}</span><br><span style="color:#888;font-size:10px">${h.code}</span>`
         : `<span style="font-size:13px;color:#60a5fa;font-weight:bold">${h.code}</span>`;
       const avgStr = _pfFmt(h.code, h.avg_price);
       const curStr = h.current_price != null ? _pfFmt(h.code, h.current_price) : '—';
@@ -1506,7 +1506,7 @@ function loadSettingsHistory() {
     const container = document.getElementById('settingsHistory');
     container.innerHTML = '';
     if (!records.length) {
-      container.innerHTML = '<span style="font-size:11px;color:#444">변경 내역 없음</span>';
+      container.innerHTML = '<span style="font-size:11px;color:#888">변경 내역 없음</span>';
       return;
     }
     records.forEach(r => {
