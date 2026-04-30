@@ -120,22 +120,29 @@ def run_take_profit_cycle(ctx: dict) -> None:
     try:
         token = ctx["token_manager"].get_valid_token()
 
-        # holdings_cache + WS 가격으로 수익률 계산 (REST 호출 없음)
-        # 둘 다 없으면 get_holdings_detail REST fallback
-        if holdings_cache and ws_prices:
+        # holdings_cache 있으면 WS 가격 기준으로만 체크 (REST 호출 없음)
+        # WS 가격 없는 종목은 이번 사이클 스킵 — 다음 사이클에 재시도
+        # holdings_cache 자체가 없을 때만 REST fallback
+        if holdings_cache:
             candidates = []
             for code, info in list(holdings_cache.items()):
                 avg_price = float(info.get("avg_price") or 0)
                 qty = info["qty"]
-                ws_data = ws_prices.get(code)
-                if not ws_data or avg_price <= 0:
+                if avg_price <= 0:
                     continue
+                ws_data = ws_prices.get(code)
+                if not ws_data:
+                    continue  # WS 가격 미수신 — 스킵
                 current_price = float(ws_data["price"])
                 profit_rate = round((current_price - avg_price) / avg_price * 100, 4)
                 candidates.append((code, qty, avg_price, profit_rate))
             logger.debug(f"[익절] 캐시+WS 기준 {len(candidates)}개 종목 체크")
         else:
-            holdings_detail = ctx["order_client"].get_holdings_detail(token)
+            try:
+                holdings_detail = ctx["order_client"].get_holdings_detail(token)
+            except Exception as e:
+                logger.warning(f"[익절] 잔고 조회 실패 — 사이클 스킵: {e}")
+                return
             candidates = [
                 (code, d["qty"], d["avg_price"], d["profit_rate"])
                 for code, d in holdings_detail.items()
