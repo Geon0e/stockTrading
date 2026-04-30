@@ -33,6 +33,7 @@ class PriceClient:
         end_date = datetime.date.today()
         url = f"{self._config.base_url}{_ENDPOINT}"
 
+        is_first_call = True
         while len(accumulated) < count:
             window = max(_MAX_PER_CALL * 2, 60)
             start_date = end_date - datetime.timedelta(days=window)
@@ -45,7 +46,13 @@ class PriceClient:
                 "FID_INPUT_DATE_2": end_date.strftime("%Y%m%d"),
             }
             resp = requests.get(url, headers=self._headers(token), params=params, timeout=10)
-            resp.raise_for_status()
+            try:
+                resp.raise_for_status()
+            except requests.HTTPError:
+                if is_first_call:
+                    raise  # 첫 호출 실패는 그대로 전파
+                break  # 페이지네이션 중 실패 = 상장 이전 날짜 소급 → 수집 종료
+            is_first_call = False
             data = resp.json()
 
             if data.get("rt_cd") != "0":
@@ -90,6 +97,7 @@ class PriceClient:
         end_date = datetime.date.today()
         url = f"{self._config.base_url}{_ENDPOINT}"
 
+        is_first_call = True
         while len(accumulated) < count:
             window = max(_MAX_PER_CALL * 2, 60)
             start_date = end_date - datetime.timedelta(days=window)
@@ -102,7 +110,13 @@ class PriceClient:
                 "FID_INPUT_DATE_2": end_date.strftime("%Y%m%d"),
             }
             resp = requests.get(url, headers=self._headers(token), params=params, timeout=10)
-            resp.raise_for_status()
+            try:
+                resp.raise_for_status()
+            except requests.HTTPError:
+                if is_first_call:
+                    raise
+                break  # 페이지네이션 중 실패 = 상장 이전 날짜 소급 → 수집 종료
+            is_first_call = False
             data = resp.json()
 
             if data.get("rt_cd") != "0":
