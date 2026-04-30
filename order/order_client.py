@@ -286,6 +286,12 @@ class OrderClient:
 
         url = f"{self._config.base_url}{_ORDER_ENDPOINT}"
         resp = requests.post(url, headers=headers, json=body, timeout=10)
+        if not resp.ok:
+            try:
+                kis_msg = resp.json().get("msg1", "")
+            except Exception:
+                kis_msg = resp.text[:200]
+            logger.warning(f"[주문] {side} HTTP {resp.status_code} [{stock_code}]: {kis_msg}")
         resp.raise_for_status()
         data = resp.json()
 

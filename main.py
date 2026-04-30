@@ -694,6 +694,14 @@ def run_stop_loss_check(ctx: dict) -> None:
                 except Exception as sell_err:
                     logger.warning(f"손절 매도 실패 [{stock_code}]: {sell_err} — 당일 재시도 중단")
                     _traded_today(ctx).add(stock_code)
+                    # 실제 잔고에 없으면 캐시에서 제거 (수량 불일치로 인한 오류 방지)
+                    try:
+                        actual_holdings = ctx["order_client"].get_holdings(token)
+                        if stock_code not in actual_holdings:
+                            ctx["holdings_cache"].pop(stock_code, None)
+                            logger.info(f"[캐시 정리] 실제 잔고에 없는 종목 제거: {stock_code}")
+                    except Exception:
+                        pass
                     continue
                 order_no = result.get("output", {}).get("ODNO", "")
                 exec_info = ctx["order_client"].get_execution(stock_code, order_no, token, side="sell")
