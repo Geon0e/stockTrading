@@ -35,7 +35,9 @@ class PriceClient:
 
         is_first_call = True
         while len(accumulated) < count:
-            window = max(_MAX_PER_CALL * 2, 60)
+            # 첫 호출: count*2 일수로 원래 동작 유지 (불필요하게 넓은 범위 방지)
+            # 페이지네이션: API 최대 반환 수 기준 고정 window
+            window = count * 2 if is_first_call else _MAX_PER_CALL * 2
             start_date = end_date - datetime.timedelta(days=window)
             params = {
                 "FID_COND_MRKT_DIV_CODE": "J",
@@ -99,7 +101,7 @@ class PriceClient:
 
         is_first_call = True
         while len(accumulated) < count:
-            window = max(_MAX_PER_CALL * 2, 60)
+            window = count * 2 if is_first_call else _MAX_PER_CALL * 2
             start_date = end_date - datetime.timedelta(days=window)
             params = {
                 "FID_COND_MRKT_DIV_CODE": "J",
