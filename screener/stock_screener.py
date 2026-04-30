@@ -23,13 +23,16 @@ class StockScreener:
         self._price_client = price_client
         self._strategy = strategy
 
-    def scan(self, token: str, all_stocks: bool = False, top_n: int = 100, max_workers: int = 5) -> List[Dict]:
+    def scan(self, token: str, all_stocks: bool = False, top_n: int = 100,
+             max_workers: int = 5, signal_queue=None, stop_event=None) -> List[Dict]:
         """골든크로스 조건에 맞는 종목 반환.
 
         watchlist 설정 시 해당 종목만 스캔.
         all_stocks=True : KOSPI + KOSDAQ 전종목 스캔 (~2,500개)
         all_stocks=False: 거래량 상위 top_n개만 스캔
         max_workers     : 병렬 스레드 수 (기본 5)
+        signal_queue    : 신호 감지 즉시 put() — 파이프라인 매수용
+        stop_event      : set() 시 잔여 종목 스킵 (조기 종료)
         """
         # ── 시장 국면 필터 ──────────────────────────────────────────────
         ok, regime_reason = check_market_regime(self._price_client, token, self._config)
@@ -63,6 +66,8 @@ class StockScreener:
         done = [0]
 
         def _check(code: str) -> None:
+            if stop_event and stop_event.is_set():
+                return
             try:
                 if vol_enabled:
                     ohlcv = self._price_client.fetch_ohlcv(code, n, token)
@@ -79,6 +84,8 @@ class StockScreener:
                     prices = self._price_client.fetch_closing_prices(code, n, token)
 
                 time.sleep(0.05)  # 스레드별 독립 rate limit
+                if stop_event and stop_event.is_set():
+                    return
                 if self._strategy.should_buy(prices):
                     signal_type = self._strategy.get_signal_type(prices)
                     name = get_stock_name(code)
@@ -92,6 +99,8 @@ class StockScreener:
                     }
                     with lock:
                         results.append(entry)
+                    if signal_queue is not None:
+                        signal_queue.put(entry)
                     label = f"{code}({name})" if name else code
                     logger.info(f"[{signal_type}] 감지: {label} | 현재가: {prices[-1]}")
             except Exception as e:

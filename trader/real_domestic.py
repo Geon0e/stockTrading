@@ -1,5 +1,7 @@
 import logging
 import datetime
+import queue
+import threading
 
 from screener.name_lookup import get_stock_name
 from trader.utils import traded_today as _traded_today, get_daily_budget, deduct_daily_budget, add_daily_budget
@@ -142,15 +144,40 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
         return 0
     per_position = min(config.real_budget // config.max_positions, remaining)
 
-    candidates = ctx["screener"].scan(token, all_stocks=config.scan_all_stocks)
-    if candidates and _tg(ctx):
-        tg_notify_scan(_tg(ctx), candidates)
+    # 스캔을 백그라운드 스레드로 돌리고 신호 감지 즉시 매수 처리 (파이프라인)
+    signal_queue: queue.Queue = queue.Queue()
+    stop_event = threading.Event()
+
+    def _run_scan():
+        try:
+            ctx["screener"].scan(
+                token,
+                all_stocks=config.scan_all_stocks,
+                signal_queue=signal_queue,
+                stop_event=stop_event,
+            )
+        except Exception as e:
+            logger.warning(f"[실전] 스캔 스레드 오류: {e}")
+        finally:
+            signal_queue.put(None)  # 스캔 완료 sentinel
+
+    scan_thread = threading.Thread(target=_run_scan, daemon=True, name="screener")
+    scan_thread.start()
 
     skipped_budget = 0
-    for candidate in candidates:
-        if bought >= capacity:
-            break
+    total_signals = 0
+    _SCAN_TIMEOUT = 180  # 스캔 최대 대기 시간(초) — 비정상 종료 안전장치
 
+    while bought < capacity:
+        try:
+            candidate = signal_queue.get(timeout=_SCAN_TIMEOUT)
+        except queue.Empty:
+            logger.warning("[실전] 스캔 타임아웃 — 신호 대기 종료")
+            break
+        if candidate is None:
+            break  # 스캔 완료
+
+        total_signals += 1
         code = candidate["code"]
         signal_type = candidate.get("signal_type", "골든크로스")
         signal_time = candidate.get("signal_detected_at", datetime.datetime.now().isoformat())
@@ -214,7 +241,6 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
             tg_notify_signal(_tg(ctx), code, price, signal_type)
 
         # 2단계: 매수 주문 (시장가 or 지정가)
-        config = ctx["config"]
         limit_price = None
         if config.order_type == "limit":
             limit_price = round(price * (1 + config.limit_order_pct / 100))
@@ -265,9 +291,13 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
         bought += 1
         logger.info(f"[실전] 매수 완료: {label} | {quantity}주 @ {exec_price}원 | 당일 잔여예산: {get_daily_budget(ctx):,}원")
 
+    # capacity 채워지면 스캐너 조기 종료
+    stop_event.set()
+    scan_thread.join(timeout=10)
+
     if skipped_budget:
         logger.info(f"[실전] 예산 초과로 스킵된 종목: {skipped_budget}개 (포지션당 {per_position:,}원 초과)")
-    if not candidates:
+    if total_signals == 0:
         logger.info(f"[실전] 골든크로스 종목 없음 | 보유: {len(holdings)}개")
 
     return bought
