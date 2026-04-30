@@ -34,9 +34,13 @@ def run_real_nasdaq_cycle(ctx: dict, token: str) -> int:
     )
 
     holdings = ctx["order_client"].get_overseas_holdings(token)
+    _exclude = set(config.exclude_list)
 
     # ── 매도 ────────────────────────────────────────────────────────────
     for symbol, info in list(holdings.items()):
+        if symbol in _exclude:
+            continue
+
         avg_price = float(info.get("avg_price") or 0)
         try:
             prices = ctx["price_client"].fetch_overseas_closing_prices(
@@ -96,7 +100,7 @@ def run_real_nasdaq_cycle(ctx: dict, token: str) -> int:
         signal_time = candidate.get("signal_detected_at", datetime.datetime.now().isoformat())
         price = float(candidate["price"])
 
-        if symbol in holdings:
+        if symbol in holdings or symbol in _exclude:
             continue
 
         # 예산 초과 종목 스킵

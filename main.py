@@ -197,10 +197,15 @@ def run_matagi_cycle(ctx: dict) -> None:
     lock = ctx.get("order_lock")
     per_position = (config.real_budget if config.mode == "real" else config.mock_budget) // config.max_positions
 
+    _exclude = set(config.exclude_list)
+
     try:
         token = ctx["token_manager"].get_valid_token()
 
         for code, info in list(holdings_cache.items()):
+            if code in _exclude:
+                continue
+
             avg_price = float(info.get("avg_price") or 0)
             if avg_price <= 0:
                 continue
@@ -317,10 +322,15 @@ def run_bultagi_cycle(ctx: dict) -> None:
     lock = ctx.get("order_lock")
     per_position = (config.real_budget if config.mode == "real" else config.mock_budget) // config.max_positions
 
+    _exclude = set(config.exclude_list)
+
     try:
         token = ctx["token_manager"].get_valid_token()
 
         for code, info in list(holdings_cache.items()):
+            if code in _exclude:
+                continue
+
             avg_price = float(info.get("avg_price") or 0)
             if avg_price <= 0:
                 continue
@@ -553,8 +563,12 @@ def _run_nasdaq_cycle(ctx: dict, token: str) -> int:
     """나스닥100 매매 사이클. 매수한 종목 수 반환"""
     config = ctx["config"]
     holdings = ctx["order_client"].get_overseas_holdings(token)
+    _exclude = set(config.exclude_list)
 
     for symbol, info in list(holdings.items()):
+        if symbol in _exclude:
+            continue
+
         avg_price = float(info.get("avg_price") or 0)
         prices = ctx["price_client"].fetch_overseas_closing_prices(
             symbol, info["exchange"], ctx["strategy"].required_data_points, token
@@ -605,7 +619,7 @@ def _run_nasdaq_cycle(ctx: dict, token: str) -> int:
             signal_type = candidate.get("signal_type", "골든크로스")
             signal_time = candidate.get("signal_detected_at", datetime.datetime.now().isoformat())
             price       = float(candidate["price"])
-            if symbol in holdings:
+            if symbol in holdings or symbol in _exclude:
                 continue
 
             # 1단계: 신호 감지 알림

@@ -871,17 +871,24 @@ def api_trades_dates():
 @app.route("/api/portfolio")
 def api_portfolio():
     mode = _valid_mode(request.args.get("mode", "mock"))
+    env = _read_env()
+    m = mode.upper()
+    _exclude = set(c.strip() for c in env.get(f"EXCLUDE_LIST_{m}", env.get("EXCLUDE_LIST", "")).split(",") if c.strip())
+
     snapshot_path = _BASE / f"logs/holdings_{mode}.json"
     if snapshot_path.exists():
         try:
-            return jsonify(json.loads(snapshot_path.read_text(encoding="utf-8")))
+            data = json.loads(snapshot_path.read_text(encoding="utf-8"))
+            if _exclude:
+                data = [item for item in data if item.get("code") not in _exclude]
+            return jsonify(data)
         except Exception:
             pass
     records = _load_trades(mode)
     holdings = {}
     for r in records:
         code = r.get("stock_code")
-        if not code:
+        if not code or code in _exclude:
             continue
         action = r.get("action")
         qty = int(r.get("quantity", 0))
@@ -1015,7 +1022,12 @@ def stream_portfolio():
     """실전 포트폴리오 실시간 시세 SSE 스트림.
     봇이 기록한 ws_prices_real.json 파일을 1초마다 읽어 전달한다."""
     def generate():
+        env = _read_env()
+        _exclude = set(c.strip() for c in env.get("EXCLUDE_LIST_REAL", env.get("EXCLUDE_LIST", "")).split(",") if c.strip())
+
         avg_prices = _load_avg_prices()
+        if _exclude:
+            avg_prices = {k: v for k, v in avg_prices.items() if k not in _exclude}
         if not avg_prices:
             yield "event: initial\ndata: []\n\n"
             return
