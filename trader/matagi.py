@@ -29,7 +29,7 @@ def check_matagi_conditions(
     try:
         candles = price_client.fetch_ohlcv(stock_code, needed, token)
     except Exception as e:
-        logger.warning(f"[물타기] OHLCV 조회 실패 [{stock_code}]: {e}")
+        logger.info(f"[물타기] OHLCV 조회 실패 [{stock_code}]: {e}")
         return False, "OHLCV 데이터 조회 실패"
 
     if len(candles) < ma_period:
