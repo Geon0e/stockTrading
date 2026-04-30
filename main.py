@@ -958,6 +958,19 @@ def run_stop_loss_check(ctx: dict) -> None:
                     f"손절 매도: {label} | 매입가: {avg_price:,.0f}원 | "
                     f"지정가: {limit_price:,}원 | 수익률: {actual_profit_pct:+.2f}%"
                 )
+        # 루프 도중 새 매수로 holdings_cache에 추가된 종목이 snapshot에서 누락될 수 있음
+        # → 저장 직전 holdings_cache와 대조해 누락분 보충
+        snapshot_codes = {item["code"] for item in snapshot}
+        for _code, _info in ctx.get("holdings_cache", {}).items():
+            if _code not in snapshot_codes:
+                snapshot.append({
+                    "code": _code,
+                    "name": get_stock_name(_code) or "",
+                    "qty": _info["qty"],
+                    "avg_price": float(_info.get("avg_price") or 0),
+                    "current_price": None,
+                    "profit_pct": None,
+                })
         _save_holdings_snapshot(config.mode, snapshot)
 
     except Exception as e:
