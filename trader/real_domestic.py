@@ -228,6 +228,8 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
         exec_info = ctx["order_client"].get_execution(code, order_no, token)
         exec_price = exec_info["exec_price"] if exec_info else str(limit_price or price)
         exec_time = exec_info["exec_time"] if exec_info else ""
+        is_executed = exec_info is not None
+
         if _tg(ctx):
             tg_notify_buy(
                 _tg(ctx), code, quantity, limit_price or price,
@@ -241,6 +243,14 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
             exec_price=exec_price,
             exec_confirmed_at=exec_time,
         )
+
+        if not is_executed:
+            # 미체결: 캐시에 올리지 않음 — holdings_cache 기반 손절/매도 로직이 오동작하지 않도록
+            _traded_today(ctx).add(code)
+            logger.info(f"[실전] 주문 접수 (미체결): {label} | 주문번호: {order_no}")
+            bought += 1
+            continue
+
         holdings[code] = {"qty": quantity, "avg_price": exec_price}
         ctx["holdings_cache"][code] = {"qty": quantity, "avg_price": float(exec_price)}
         # 물타기였으면 단계 카운터 증가
