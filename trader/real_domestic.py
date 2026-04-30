@@ -195,12 +195,16 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
         price = int(candidate["price"])
 
         if code in _traded_today(ctx):
+            _n = get_stock_name(code)
+            logger.info(f"[매수 스킵] 당일 이미 거래: {code}({_n})" if _n else f"[매수 스킵] 당일 이미 거래: {code}")
             continue
 
         if code in holdings:
             avg_p = float(holdings[code].get("avg_price") or 0)
             if avg_p <= 0 or price >= avg_p:
-                logger.debug(f"[실전] 보유 중 수익 종목 추가매수 스킵: {code} | 매입가: {avg_p:,.0f}원 | 현재가: {price:,}원")
+                _n = get_stock_name(code)
+                _lbl = f"{code}({_n})" if _n else code
+                logger.info(f"[매수 스킵] 보유 중 수익 종목: {_lbl} | 매입가: {avg_p:,.0f}원 | 현재가: {price:,}원")
                 continue
             # 최대 물타기 횟수 초과 시 스킵
             matagi_count = ctx.get("matagi_count", {})
@@ -226,8 +230,10 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
         # 예산 초과 종목 스킵
         if price > per_position:
             skipped_budget += 1
-            logger.debug(
-                f"[실전] 예산 초과 스킵: {code} | 주가: {price:,}원 > 포지션예산: {per_position:,}원"
+            _n = get_stock_name(code)
+            _lbl = f"{code}({_n})" if _n else code
+            logger.info(
+                f"[매수 스킵] 예산 초과: {_lbl} | 주가: {price:,}원 > 포지션예산: {per_position:,}원"
             )
             continue
 
@@ -237,6 +243,9 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
         if config.order_quantity > 0:
             quantity = min(quantity, config.order_quantity)
         if quantity < 1:
+            _n = get_stock_name(code)
+            _lbl = f"{code}({_n})" if _n else code
+            logger.info(f"[매수 스킵] 잔여예산 부족으로 수량 0: {_lbl} | 가용예산: {available:,}원 | 주가: {price:,}원")
             continue
 
         name = get_stock_name(code)
