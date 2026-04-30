@@ -480,6 +480,18 @@ def api_get_config():
         "morning_stoploss_enabled": env.get(f"MORNING_STOPLOSS_ENABLED_{m}", env.get("MORNING_STOPLOSS_ENABLED", "false")).lower() == "true",
         "matagi_drop_pct": float(env.get(f"MATAGI_DROP_PCT_{m}", env.get("MATAGI_DROP_PCT", "2.0"))),
         "matagi_max_count": int(env.get(f"MATAGI_MAX_COUNT_{m}", env.get("MATAGI_MAX_COUNT", "2"))),
+        "matagi_interval_minutes": int(env.get(f"MATAGI_INTERVAL_MINUTES_{m}", env.get("MATAGI_INTERVAL_MINUTES", "5"))),
+        "matagi_ma_period": int(env.get(f"MATAGI_MA_PERIOD_{m}", env.get("MATAGI_MA_PERIOD", "20"))),
+        "matagi_use_ma_filter": env.get(f"MATAGI_USE_MA_FILTER_{m}", env.get("MATAGI_USE_MA_FILTER", "true")).lower() == "true",
+        "matagi_vol_lookback": int(env.get(f"MATAGI_VOL_LOOKBACK_{m}", env.get("MATAGI_VOL_LOOKBACK", "5"))),
+        "matagi_use_rebound_filter": env.get(f"MATAGI_USE_REBOUND_FILTER_{m}", env.get("MATAGI_USE_REBOUND_FILTER", "true")).lower() == "true",
+        "matagi_stage_multipliers": env.get(f"MATAGI_STAGE_MULTIPLIERS_{m}", env.get("MATAGI_STAGE_MULTIPLIERS", "1.0,2.5,4.0")),
+        "bultagi_profit_pct": float(env.get(f"BULTAGI_PROFIT_PCT_{m}", env.get("BULTAGI_PROFIT_PCT", "0"))),
+        "bultagi_max_count": int(env.get(f"BULTAGI_MAX_COUNT_{m}", env.get("BULTAGI_MAX_COUNT", "2"))),
+        "bultagi_interval_minutes": int(env.get(f"BULTAGI_INTERVAL_MINUTES_{m}", env.get("BULTAGI_INTERVAL_MINUTES", "5"))),
+        "bultagi_ma_period": int(env.get(f"BULTAGI_MA_PERIOD_{m}", env.get("BULTAGI_MA_PERIOD", "20"))),
+        "bultagi_use_ma_filter": env.get(f"BULTAGI_USE_MA_FILTER_{m}", env.get("BULTAGI_USE_MA_FILTER", "true")).lower() == "true",
+        "bultagi_stage_multipliers": env.get(f"BULTAGI_STAGE_MULTIPLIERS_{m}", env.get("BULTAGI_STAGE_MULTIPLIERS", "1.0,2.0,3.0")),
         "market_regime_enabled": env.get(f"MARKET_REGIME_ENABLED_{m}", env.get("MARKET_REGIME_ENABLED", "false" if mode == "mock" else "true")).lower() == "true",
         "market_regime_index_code": env.get("MARKET_REGIME_INDEX_CODE", "069500"),
         "market_regime_ma_period": int(env.get("MARKET_REGIME_MA_PERIOD", "60")),
@@ -665,13 +677,82 @@ def api_save_restart():
         val = float(cfg["matagi_drop_pct"])
         if val >= 0:
             _write_env_key(f"MATAGI_DROP_PCT_{mode.upper()}", str(val))
-            changes["물타기 1차 기준"] = f"-{val}% / -{val*2.5:.0f}% / -{val*4:.0f}%"
+            changes["물타기 1차 기준"] = f"-{val}%"
 
     if "matagi_max_count" in cfg:
         val = int(cfg["matagi_max_count"])
         if val >= 0:
             _write_env_key(f"MATAGI_MAX_COUNT_{mode.upper()}", str(val))
             changes["물타기 최대횟수"] = f"{val}회" if val > 0 else "비활성화"
+
+    if "matagi_interval_minutes" in cfg:
+        val = int(cfg["matagi_interval_minutes"])
+        if val >= 0:
+            _write_env_key(f"MATAGI_INTERVAL_MINUTES_{mode.upper()}", str(val))
+            changes["물타기 모니터주기"] = f"{val}분" if val > 0 else "비활성화"
+
+    if "matagi_ma_period" in cfg:
+        val = int(cfg["matagi_ma_period"])
+        if val > 0:
+            _write_env_key(f"MATAGI_MA_PERIOD_{mode.upper()}", str(val))
+            changes["물타기 MA기간"] = f"{val}"
+
+    if "matagi_use_ma_filter" in cfg:
+        val = bool(cfg["matagi_use_ma_filter"])
+        _write_env_key(f"MATAGI_USE_MA_FILTER_{mode.upper()}", "true" if val else "false")
+        changes["물타기 MA필터"] = "활성화" if val else "비활성화"
+
+    if "matagi_vol_lookback" in cfg:
+        val = int(cfg["matagi_vol_lookback"])
+        if val > 0:
+            _write_env_key(f"MATAGI_VOL_LOOKBACK_{mode.upper()}", str(val))
+            changes["물타기 거래량기간"] = f"{val}"
+
+    if "matagi_use_rebound_filter" in cfg:
+        val = bool(cfg["matagi_use_rebound_filter"])
+        _write_env_key(f"MATAGI_USE_REBOUND_FILTER_{mode.upper()}", "true" if val else "false")
+        changes["물타기 반등필터"] = "활성화" if val else "비활성화"
+
+    if "matagi_stage_multipliers" in cfg:
+        val = str(cfg["matagi_stage_multipliers"]).strip()
+        if val:
+            _write_env_key(f"MATAGI_STAGE_MULTIPLIERS_{mode.upper()}", val)
+            changes["물타기 단계배율"] = val
+
+    if "bultagi_profit_pct" in cfg:
+        val = float(cfg["bultagi_profit_pct"])
+        if val >= 0:
+            _write_env_key(f"BULTAGI_PROFIT_PCT_{mode.upper()}", str(val))
+            changes["불타기 1차 기준"] = f"+{val}%" if val > 0 else "비활성화"
+
+    if "bultagi_max_count" in cfg:
+        val = int(cfg["bultagi_max_count"])
+        if val >= 0:
+            _write_env_key(f"BULTAGI_MAX_COUNT_{mode.upper()}", str(val))
+            changes["불타기 최대횟수"] = f"{val}회" if val > 0 else "비활성화"
+
+    if "bultagi_interval_minutes" in cfg:
+        val = int(cfg["bultagi_interval_minutes"])
+        if val >= 0:
+            _write_env_key(f"BULTAGI_INTERVAL_MINUTES_{mode.upper()}", str(val))
+            changes["불타기 모니터주기"] = f"{val}분" if val > 0 else "비활성화"
+
+    if "bultagi_ma_period" in cfg:
+        val = int(cfg["bultagi_ma_period"])
+        if val > 0:
+            _write_env_key(f"BULTAGI_MA_PERIOD_{mode.upper()}", str(val))
+            changes["불타기 MA기간"] = f"{val}"
+
+    if "bultagi_use_ma_filter" in cfg:
+        val = bool(cfg["bultagi_use_ma_filter"])
+        _write_env_key(f"BULTAGI_USE_MA_FILTER_{mode.upper()}", "true" if val else "false")
+        changes["불타기 MA필터"] = "활성화" if val else "비활성화"
+
+    if "bultagi_stage_multipliers" in cfg:
+        val = str(cfg["bultagi_stage_multipliers"]).strip()
+        if val:
+            _write_env_key(f"BULTAGI_STAGE_MULTIPLIERS_{mode.upper()}", val)
+            changes["불타기 단계배율"] = val
 
     if "market_regime_enabled" in cfg:
         val = bool(cfg["market_regime_enabled"])

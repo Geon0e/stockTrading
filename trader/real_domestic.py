@@ -5,7 +5,6 @@ import threading
 
 from screener.name_lookup import get_stock_name
 from trader.utils import traded_today as _traded_today, get_daily_budget, deduct_daily_budget, add_daily_budget
-from trader.matagi import check_matagi_conditions
 from notifications.telegram_notifier import (
     notify_signal as tg_notify_signal,
     notify_order_placed as tg_notify_order_placed,
@@ -200,32 +199,10 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
             continue
 
         if code in holdings:
-            avg_p = float(holdings[code].get("avg_price") or 0)
-            if avg_p <= 0 or price >= avg_p:
-                _n = get_stock_name(code)
-                _lbl = f"{code}({_n})" if _n else code
-                logger.info(f"[매수 스킵] 보유 중 수익 종목: {_lbl} | 매입가: {avg_p:,.0f}원 | 현재가: {price:,}원")
-                continue
-            # 최대 물타기 횟수 초과 시 스킵
-            matagi_count = ctx.get("matagi_count", {})
-            stage = matagi_count.get(code, 0)
-            max_count = ctx["config"].matagi_max_count
-            _name = get_stock_name(code)
-            _label = f"{code}({_name})" if _name else code
-            if max_count > 0 and stage >= max_count:
-                logger.info(f"[실전] 물타기 횟수 초과 [{_label}]: {stage}/{max_count}회 완료")
-                continue
-            # 단계별 물타기 조건 확인
-            ok, reason = check_matagi_conditions(
-                ctx["price_client"], code, token, avg_p, price,
-                drop_pct=ctx["config"].matagi_drop_pct,
-                matagi_stage=stage,
-            )
-            if not ok:
-                logger.info(f"[실전] 물타기 스킵 [{_label}]: {reason}")
-                continue
-            signal_type = "물타기"
-            logger.info(f"[실전] 물타기 {stage + 1}차 조건 통과 [{_label}]: {reason}")
+            _n = get_stock_name(code)
+            _lbl = f"{code}({_n})" if _n else code
+            logger.info(f"[매수 스킵] 보유 중 종목 (물타기 모니터 담당): {_lbl}")
+            continue
 
         # 예산 초과 종목 스킵
         if price > per_position:
@@ -304,6 +281,7 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
             mc = ctx.get("matagi_count", {})
             mc[code] = mc.get(code, 0) + 1
             ctx["matagi_count"] = mc
+        _traded_today(ctx).add(code)
         cost = int(float(exec_price) * quantity)
         deduct_daily_budget(ctx, cost)
         if ctx.get("realtime_price"):

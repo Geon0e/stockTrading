@@ -16,6 +16,7 @@ from screener.stock_screener import StockScreener
 from audit.trade_logger import TradeLogger
 from trader.real_domestic import run_real_domestic_cycle
 from trader.matagi import check_matagi_conditions
+from trader.bultagi import check_bultagi_conditions
 from trader.real_nasdaq import run_real_nasdaq_cycle
 from trader.utils import traded_today as _traded_today, get_daily_budget, deduct_daily_budget, add_daily_budget, init_daily_from_api
 from notifications.telegram_notifier import (
@@ -171,6 +172,244 @@ def run_take_profit_cycle(ctx: dict) -> None:
         logger.error(f"익절 사이클 오류: {e}", exc_info=True)
 
 
+def run_matagi_cycle(ctx: dict) -> None:
+    """독립 물타기 모니터 — 보유 중인 손실 종목에 대해 물타기 조건 충족 시 추가매수.
+    스크리너와 무관하게 주기적으로 실행된다."""
+    if not is_market_open():
+        return
+    config = ctx["config"]
+    if config.matagi_max_count <= 0:
+        return
+
+    holdings_cache = dict(ctx.get("holdings_cache", {}))
+    if not holdings_cache:
+        return
+
+    rtp = ctx.get("realtime_price")
+    ws_prices = rtp.get_prices() if rtp else {}
+    lock = ctx.get("order_lock")
+    per_position = (config.real_budget if config.mode == "real" else config.mock_budget) // config.max_positions
+
+    try:
+        token = ctx["token_manager"].get_valid_token()
+
+        for code, info in list(holdings_cache.items()):
+            avg_price = float(info.get("avg_price") or 0)
+            if avg_price <= 0:
+                continue
+
+            # 현재가 조회 (WebSocket 우선, 없으면 REST)
+            ws_data = ws_prices.get(code)
+            if ws_data:
+                current_price = float(ws_data["price"])
+            else:
+                try:
+                    current_price = float(ctx["price_client"].fetch_current_price(code, token))
+                except Exception as e:
+                    logger.debug(f"[물타기] 현재가 조회 실패 [{code}]: {e}")
+                    continue
+
+            if current_price >= avg_price:
+                continue  # 수익 중이면 물타기 불필요
+
+            matagi_count = ctx.get("matagi_count", {})
+            stage = matagi_count.get(code, 0)
+            if config.matagi_max_count > 0 and stage >= config.matagi_max_count:
+                continue
+
+            ok, reason = check_matagi_conditions(
+                ctx["price_client"], code, token, avg_price, current_price,
+                drop_pct=config.matagi_drop_pct,
+                matagi_stage=stage,
+                ma_period=config.matagi_ma_period,
+                use_ma_filter=config.matagi_use_ma_filter,
+                vol_lookback=config.matagi_vol_lookback,
+                use_rebound_filter=config.matagi_use_rebound_filter,
+                stage_multipliers=config.matagi_stage_multipliers,
+            )
+            name = get_stock_name(code)
+            label = f"{code}({name})" if name else code
+            if not ok:
+                logger.debug(f"[물타기] 조건 미충족 [{label}]: {reason}")
+                continue
+
+            logger.info(f"[물타기] {stage + 1}차 조건 통과 [{label}]: {reason}")
+
+            available = min(per_position, get_daily_budget(ctx))
+            price_int = int(current_price)
+            quantity = available // price_int if price_int > 0 else 0
+            if config.order_quantity > 0:
+                quantity = min(quantity, config.order_quantity)
+            if quantity < 1:
+                logger.info(f"[물타기] 예산 부족으로 스킵: {label} | 가용: {available:,}원 | 현재가: {price_int:,}원")
+                continue
+
+            limit_price = None
+            if config.order_type == "limit":
+                limit_price = round(price_int * (1 + config.limit_order_pct / 100))
+
+            with lock if lock else _null_ctx():
+                result = ctx["order_client"].buy(code, quantity, token, limit_price=limit_price)
+
+            order_no = result.get("output", {}).get("ODNO", "")
+            if _tg(ctx):
+                tg_notify_order_placed(_tg(ctx), code, quantity, limit_price or price_int, order_no)
+
+            exec_info = ctx["order_client"].get_execution(code, order_no, token)
+            exec_price_str = exec_info["exec_price"] if exec_info else str(limit_price or price_int)
+            exec_time = exec_info["exec_time"] if exec_info else ""
+            exec_price_f = float(exec_price_str)
+            signal_time = datetime.datetime.now().isoformat()
+
+            if _tg(ctx):
+                tg_notify_buy(_tg(ctx), code, quantity, limit_price or price_int,
+                              signal_type="물타기", signal_time=signal_time,
+                              exec_price=exec_price_str)
+            ctx["trade_logger"].log(
+                "BUY", code, quantity, result,
+                signal_type="물타기",
+                signal_detected_at=signal_time,
+                exec_price=exec_price_str,
+                exec_confirmed_at=exec_time,
+            )
+
+            old_qty = info["qty"]
+            new_qty = old_qty + quantity
+            new_avg = (avg_price * old_qty + exec_price_f * quantity) / new_qty
+            ctx["holdings_cache"][code] = {"qty": new_qty, "avg_price": new_avg}
+
+            mc = ctx.get("matagi_count", {})
+            mc[code] = mc.get(code, 0) + 1
+            ctx["matagi_count"] = mc
+
+            deduct_daily_budget(ctx, int(exec_price_f * quantity))
+            logger.info(
+                f"[물타기] 매수 완료: {label} | {stage + 1}차 | "
+                f"{quantity}주 @ {exec_price_str}원 | 당일 잔여예산: {get_daily_budget(ctx):,}원"
+            )
+
+    except Exception as e:
+        logger.error(f"[물타기] 사이클 오류: {e}", exc_info=True)
+
+
+def run_bultagi_cycle(ctx: dict) -> None:
+    """독립 불타기 모니터 — 보유 중인 수익 종목에 대해 불타기 조건 충족 시 추가매수.
+    스크리너와 무관하게 주기적으로 실행된다."""
+    if not is_market_open():
+        return
+    config = ctx["config"]
+    if config.bultagi_profit_pct <= 0 or config.bultagi_max_count <= 0:
+        return
+
+    holdings_cache = dict(ctx.get("holdings_cache", {}))
+    if not holdings_cache:
+        return
+
+    rtp = ctx.get("realtime_price")
+    ws_prices = rtp.get_prices() if rtp else {}
+    lock = ctx.get("order_lock")
+    per_position = (config.real_budget if config.mode == "real" else config.mock_budget) // config.max_positions
+
+    try:
+        token = ctx["token_manager"].get_valid_token()
+
+        for code, info in list(holdings_cache.items()):
+            avg_price = float(info.get("avg_price") or 0)
+            if avg_price <= 0:
+                continue
+
+            # 현재가 조회 (WebSocket 우선, 없으면 REST)
+            ws_data = ws_prices.get(code)
+            if ws_data:
+                current_price = float(ws_data["price"])
+            else:
+                try:
+                    current_price = float(ctx["price_client"].fetch_current_price(code, token))
+                except Exception as e:
+                    logger.debug(f"[불타기] 현재가 조회 실패 [{code}]: {e}")
+                    continue
+
+            if current_price <= avg_price:
+                continue  # 손실 중이면 불타기 불필요
+
+            bultagi_count = ctx.get("bultagi_count", {})
+            stage = bultagi_count.get(code, 0)
+            if config.bultagi_max_count > 0 and stage >= config.bultagi_max_count:
+                continue
+
+            ok, reason = check_bultagi_conditions(
+                ctx["price_client"], code, token, avg_price, current_price,
+                profit_pct=config.bultagi_profit_pct,
+                bultagi_stage=stage,
+                ma_period=config.bultagi_ma_period,
+                use_ma_filter=config.bultagi_use_ma_filter,
+                stage_multipliers=config.bultagi_stage_multipliers,
+            )
+            name = get_stock_name(code)
+            label = f"{code}({name})" if name else code
+            if not ok:
+                logger.debug(f"[불타기] 조건 미충족 [{label}]: {reason}")
+                continue
+
+            logger.info(f"[불타기] {stage + 1}차 조건 통과 [{label}]: {reason}")
+
+            available = min(per_position, get_daily_budget(ctx))
+            price_int = int(current_price)
+            quantity = available // price_int if price_int > 0 else 0
+            if config.order_quantity > 0:
+                quantity = min(quantity, config.order_quantity)
+            if quantity < 1:
+                logger.info(f"[불타기] 예산 부족으로 스킵: {label} | 가용: {available:,}원 | 현재가: {price_int:,}원")
+                continue
+
+            limit_price = None
+            if config.order_type == "limit":
+                limit_price = round(price_int * (1 + config.limit_order_pct / 100))
+
+            with lock if lock else _null_ctx():
+                result = ctx["order_client"].buy(code, quantity, token, limit_price=limit_price)
+
+            order_no = result.get("output", {}).get("ODNO", "")
+            if _tg(ctx):
+                tg_notify_order_placed(_tg(ctx), code, quantity, limit_price or price_int, order_no)
+
+            exec_info = ctx["order_client"].get_execution(code, order_no, token)
+            exec_price_str = exec_info["exec_price"] if exec_info else str(limit_price or price_int)
+            exec_time = exec_info["exec_time"] if exec_info else ""
+            exec_price_f = float(exec_price_str)
+            signal_time = datetime.datetime.now().isoformat()
+
+            if _tg(ctx):
+                tg_notify_buy(_tg(ctx), code, quantity, limit_price or price_int,
+                              signal_type="불타기", signal_time=signal_time,
+                              exec_price=exec_price_str)
+            ctx["trade_logger"].log(
+                "BUY", code, quantity, result,
+                signal_type="불타기",
+                signal_detected_at=signal_time,
+                exec_price=exec_price_str,
+                exec_confirmed_at=exec_time,
+            )
+
+            old_qty = info["qty"]
+            new_qty = old_qty + quantity
+            new_avg = (avg_price * old_qty + exec_price_f * quantity) / new_qty
+            ctx["holdings_cache"][code] = {"qty": new_qty, "avg_price": new_avg}
+
+            bc = ctx.get("bultagi_count", {})
+            bc[code] = bc.get(code, 0) + 1
+            ctx["bultagi_count"] = bc
+
+            deduct_daily_budget(ctx, int(exec_price_f * quantity))
+            logger.info(
+                f"[불타기] 매수 완료: {label} | {stage + 1}차 | "
+                f"{quantity}주 @ {exec_price_str}원 | 당일 잔여예산: {get_daily_budget(ctx):,}원"
+            )
+
+    except Exception as e:
+        logger.error(f"[불타기] 사이클 오류: {e}", exc_info=True)
+
+
 def _notify_sell(ctx, code, qty, price, signal_type: str = "", market: str = "KR"):
     if _tg(ctx):
         tg_notify_sell(_tg(ctx), code, qty, price, signal_type=signal_type, market=market)
@@ -247,22 +486,10 @@ def _run_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> int:
                 continue
 
             if code in holdings:
-                avg_p = float(holdings[code].get("avg_price") or 0)
-                if avg_p <= 0 or price >= avg_p:
-                    logger.debug(f"보유 중 수익 종목 추가매수 스킵: {code} | 매입가: {avg_p:,.0f}원 | 현재가: {price:,}원")
-                    continue
-                # 물타기 추가 조건 확인
-                ok, reason = check_matagi_conditions(
-                    ctx["price_client"], code, token, avg_p, price,
-                    drop_pct=config.matagi_drop_pct,
-                )
-                _name = get_stock_name(code)
-                _label = f"{code}({_name})" if _name else code
-                if not ok:
-                    logger.info(f"물타기 스킵 [{_label}]: {reason}")
-                    continue
-                signal_type = "물타기"
-                logger.info(f"물타기 조건 통과 [{_label}]: {reason}")
+                _n = get_stock_name(code)
+                _lbl = f"{code}({_n})" if _n else code
+                logger.info(f"[매수 스킵] 보유 중 종목 (물타기 모니터 담당): {_lbl}")
+                continue
 
             # 1단계: 신호 감지 알림
             if _tg(ctx):
@@ -304,6 +531,7 @@ def _run_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> int:
                 exec_confirmed_at=exec_time,
             )
             holdings[code] = {"qty": quantity, "avg_price": exec_price}
+            _traded_today(ctx).add(code)
             cost = int(float(exec_price) * quantity)
             deduct_daily_budget(ctx, cost)
             logger.info(f"당일 잔여예산: {get_daily_budget(ctx):,}원")
@@ -893,6 +1121,7 @@ def main() -> None:
         "budget_lock":         budget_lock,
         "holdings_cache":      {},  # {code: {"qty": int, "avg_price": float}} — 매수/매도 시 갱신
         "matagi_count":        {},  # {code: int} — 종목당 물타기 횟수 (재시작 시 로그에서 복원)
+        "bultagi_count":       {},  # {code: int} — 종목당 불타기 횟수
     }
 
     # real 모드: WebSocket 실시간 시세 초기화
@@ -995,6 +1224,18 @@ def main() -> None:
     if config.take_profit_rate > 0:
         _start_monitor("익절", run_take_profit_cycle, monitor_interval)
         logger.info(f"익절 모니터링 활성화: +{config.take_profit_rate}% | {monitor_interval}초 전용 스레드")
+    if config.matagi_max_count > 0 and config.matagi_interval_minutes > 0:
+        _start_monitor("물타기", run_matagi_cycle, config.matagi_interval_minutes * 60)
+        logger.info(
+            f"물타기 모니터링 활성화: -{config.matagi_drop_pct}% 기준 | "
+            f"최대 {config.matagi_max_count}회 | {config.matagi_interval_minutes}분 주기"
+        )
+    if config.bultagi_profit_pct > 0 and config.bultagi_max_count > 0 and config.bultagi_interval_minutes > 0:
+        _start_monitor("불타기", run_bultagi_cycle, config.bultagi_interval_minutes * 60)
+        logger.info(
+            f"불타기 모니터링 활성화: +{config.bultagi_profit_pct}% 기준 | "
+            f"최대 {config.bultagi_max_count}회 | {config.bultagi_interval_minutes}분 주기"
+        )
 
     def _on_signal(signum, frame):
         logger.info("종료 신호 수신 — 모니터링 스레드 정리 중...")

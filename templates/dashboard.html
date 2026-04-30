@@ -598,12 +598,62 @@ code { color: #60a5fa; font-size: 11px; }
           <span style="font-size:11px;color:#555;margin-left:12px">최대 주문 수량</span>
           <input type="number" id="cfgOrderQty" class="cfg-input" style="width:70px" min="0" placeholder="0" value="0">
           <span class="cfg-hint" id="cfgOrderQtyHint">주 (0=무제한)</span>
-          <span style="font-size:11px;color:#a78bfa;margin-left:12px">물타기 1차</span>
-          <input type="number" id="cfgMatagiDrop" class="cfg-input" style="width:55px" min="0" step="0.1" placeholder="2.0">
-          <span class="cfg-hint">% (2차×2.5 / 3차×4)</span>
-          <span style="font-size:11px;color:#a78bfa;margin-left:8px">최대횟수</span>
-          <input type="number" id="cfgMatagiMax" class="cfg-input" style="width:48px" min="0" max="10" placeholder="2">
-          <span class="cfg-hint">회 (0=비활성)</span>
+        </div>
+
+        <div style="margin-top:10px;border:1px solid #1a1a2e;border-radius:6px;padding:8px 10px;background:#0d0d1a">
+          <div style="font-size:10px;color:#a78bfa;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">물타기 <span style="font-weight:normal;text-transform:none;color:#888;font-size:10px">손실 보유 종목 추가매수</span></div>
+          <div class="cfg-row" style="gap:6px;flex-wrap:wrap;margin-bottom:6px">
+            <span style="font-size:11px;color:#888">1차 기준</span>
+            <input type="number" id="cfgMatagiDrop" class="cfg-input" style="width:55px" min="0" step="0.1" placeholder="2.0">
+            <span class="cfg-hint">%</span>
+            <span style="font-size:11px;color:#555;margin-left:8px">최대횟수</span>
+            <input type="number" id="cfgMatagiMax" class="cfg-input" style="width:48px" min="0" max="10" placeholder="2">
+            <span class="cfg-hint">회 (0=비활성)</span>
+            <span style="font-size:11px;color:#555;margin-left:8px">모니터주기</span>
+            <input type="number" id="cfgMatagiInterval" class="cfg-input" style="width:48px" min="0" placeholder="5">
+            <span class="cfg-hint">분</span>
+          </div>
+          <div class="cfg-row" style="gap:6px;flex-wrap:wrap;margin-bottom:6px">
+            <span style="font-size:11px;color:#888">MA기간</span>
+            <input type="number" id="cfgMatagiMaPeriod" class="cfg-input" style="width:48px" min="1" placeholder="20">
+            <label class="cfg-toggle" style="margin-left:10px"><input type="checkbox" id="cfgMatagiUseMa"><span></span></label>
+            <span style="font-size:11px;color:#ccc;margin-left:4px">MA필터</span>
+            <span style="font-size:11px;color:#555;margin-left:10px">거래량기간</span>
+            <input type="number" id="cfgMatagiVolLookback" class="cfg-input" style="width:48px" min="1" placeholder="5">
+            <label class="cfg-toggle" style="margin-left:10px"><input type="checkbox" id="cfgMatagiUseRebound"><span></span></label>
+            <span style="font-size:11px;color:#ccc;margin-left:4px">반등신호필터</span>
+          </div>
+          <div class="cfg-row" style="gap:6px;flex-wrap:wrap">
+            <span style="font-size:11px;color:#888">단계배율</span>
+            <input type="text" id="cfgMatagiMultipliers" class="cfg-input" style="width:120px" placeholder="1.0,2.5,4.0">
+            <span class="cfg-hint">쉼표 구분 (1차,2차,3차)</span>
+          </div>
+        </div>
+
+        <div style="margin-top:10px;border:1px solid #1a2e1a;border-radius:6px;padding:8px 10px;background:#0d1a0d">
+          <div style="font-size:10px;color:#4ade80;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">불타기 <span style="font-weight:normal;text-transform:none;color:#888;font-size:10px">수익 보유 종목 추가매수 (1차기준 0=비활성)</span></div>
+          <div class="cfg-row" style="gap:6px;flex-wrap:wrap;margin-bottom:6px">
+            <span style="font-size:11px;color:#888">1차 기준</span>
+            <input type="number" id="cfgBultagiProfit" class="cfg-input" style="width:55px" min="0" step="0.1" placeholder="0">
+            <span class="cfg-hint">%</span>
+            <span style="font-size:11px;color:#555;margin-left:8px">최대횟수</span>
+            <input type="number" id="cfgBultagiMax" class="cfg-input" style="width:48px" min="0" max="10" placeholder="2">
+            <span class="cfg-hint">회 (0=비활성)</span>
+            <span style="font-size:11px;color:#555;margin-left:8px">모니터주기</span>
+            <input type="number" id="cfgBultagiInterval" class="cfg-input" style="width:48px" min="0" placeholder="5">
+            <span class="cfg-hint">분</span>
+          </div>
+          <div class="cfg-row" style="gap:6px;flex-wrap:wrap;margin-bottom:6px">
+            <span style="font-size:11px;color:#888">MA기간</span>
+            <input type="number" id="cfgBultagiMaPeriod" class="cfg-input" style="width:48px" min="1" placeholder="20">
+            <label class="cfg-toggle" style="margin-left:10px"><input type="checkbox" id="cfgBultagiUseMa"><span></span></label>
+            <span style="font-size:11px;color:#ccc;margin-left:4px">MA필터</span>
+          </div>
+          <div class="cfg-row" style="gap:6px;flex-wrap:wrap">
+            <span style="font-size:11px;color:#888">단계배율</span>
+            <input type="text" id="cfgBultagiMultipliers" class="cfg-input" style="width:120px" placeholder="1.0,2.0,3.0">
+            <span class="cfg-hint">쉼표 구분 (1차,2차,3차)</span>
+          </div>
         </div>
 
         <div style="margin-top:10px;border:1px solid #2a1a1a;border-radius:6px;padding:8px 10px;background:#160b0b">
@@ -1388,8 +1438,20 @@ function saveAndRestart() {
   if (budget > 0) cfg.budget = budget;
   if (mp > 0) cfg.max_positions = mp;
   if (oq !== null) cfg.order_quantity = oq;  // 0도 허용 (자동계산)
-  cfg.matagi_drop_pct  = parseFloat(document.getElementById('cfgMatagiDrop').value) || 2.0;
-  cfg.matagi_max_count = parseInt(document.getElementById('cfgMatagiMax').value) || 0;
+  cfg.matagi_drop_pct          = parseFloat(document.getElementById('cfgMatagiDrop').value) || 2.0;
+  cfg.matagi_max_count         = parseInt(document.getElementById('cfgMatagiMax').value) || 0;
+  cfg.matagi_interval_minutes  = parseInt(document.getElementById('cfgMatagiInterval').value) || 5;
+  cfg.matagi_ma_period         = parseInt(document.getElementById('cfgMatagiMaPeriod').value) || 20;
+  cfg.matagi_use_ma_filter     = document.getElementById('cfgMatagiUseMa').checked;
+  cfg.matagi_vol_lookback      = parseInt(document.getElementById('cfgMatagiVolLookback').value) || 5;
+  cfg.matagi_use_rebound_filter = document.getElementById('cfgMatagiUseRebound').checked;
+  cfg.matagi_stage_multipliers = document.getElementById('cfgMatagiMultipliers').value.trim() || '1.0,2.5,4.0';
+  cfg.bultagi_profit_pct       = parseFloat(document.getElementById('cfgBultagiProfit').value) || 0;
+  cfg.bultagi_max_count        = parseInt(document.getElementById('cfgBultagiMax').value) || 0;
+  cfg.bultagi_interval_minutes = parseInt(document.getElementById('cfgBultagiInterval').value) || 5;
+  cfg.bultagi_ma_period        = parseInt(document.getElementById('cfgBultagiMaPeriod').value) || 20;
+  cfg.bultagi_use_ma_filter    = document.getElementById('cfgBultagiUseMa').checked;
+  cfg.bultagi_stage_multipliers = document.getElementById('cfgBultagiMultipliers').value.trim() || '1.0,2.0,3.0';
   cfg.market_regime_enabled    = document.getElementById('cfgRegimeEnabled').checked;
   cfg.market_regime_index_code = document.getElementById('cfgRegimeIndex').value.trim() || '069500';
   cfg.market_regime_ma_period  = parseInt(document.getElementById('cfgRegimeMa').value) || 0;
@@ -1474,8 +1536,20 @@ function loadSettings() {
     }
     document.getElementById('cfgMaxPositions').value = d.max_positions ?? '';
     document.getElementById('cfgOrderQty').value = d.order_quantity ?? 0;
-    document.getElementById('cfgMatagiDrop').value = d.matagi_drop_pct ?? 2.0;
-    document.getElementById('cfgMatagiMax').value  = d.matagi_max_count ?? 2;
+    document.getElementById('cfgMatagiDrop').value          = d.matagi_drop_pct ?? 2.0;
+    document.getElementById('cfgMatagiMax').value           = d.matagi_max_count ?? 2;
+    document.getElementById('cfgMatagiInterval').value      = d.matagi_interval_minutes ?? 5;
+    document.getElementById('cfgMatagiMaPeriod').value      = d.matagi_ma_period ?? 20;
+    document.getElementById('cfgMatagiUseMa').checked       = d.matagi_use_ma_filter !== false;
+    document.getElementById('cfgMatagiVolLookback').value   = d.matagi_vol_lookback ?? 5;
+    document.getElementById('cfgMatagiUseRebound').checked  = d.matagi_use_rebound_filter !== false;
+    document.getElementById('cfgMatagiMultipliers').value   = d.matagi_stage_multipliers ?? '1.0,2.5,4.0';
+    document.getElementById('cfgBultagiProfit').value       = d.bultagi_profit_pct ?? 0;
+    document.getElementById('cfgBultagiMax').value          = d.bultagi_max_count ?? 2;
+    document.getElementById('cfgBultagiInterval').value     = d.bultagi_interval_minutes ?? 5;
+    document.getElementById('cfgBultagiMaPeriod').value     = d.bultagi_ma_period ?? 20;
+    document.getElementById('cfgBultagiUseMa').checked      = d.bultagi_use_ma_filter !== false;
+    document.getElementById('cfgBultagiMultipliers').value  = d.bultagi_stage_multipliers ?? '1.0,2.0,3.0';
     document.getElementById('cfgRegimeEnabled').checked = !!d.market_regime_enabled;
     document.getElementById('cfgRegimeIndex').value     = d.market_regime_index_code ?? '069500';
     document.getElementById('cfgRegimeMa').value        = d.market_regime_ma_period  ?? 60;

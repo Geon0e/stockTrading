@@ -73,6 +73,18 @@ class Config:
     morning_stoploss_enabled: bool  # 10:30 전일 손실 종목 손절 활성화 여부
     matagi_drop_pct: float          # 물타기 1차 하락 기준 (%, 1차=×1 / 2차=×2.5 / 3차=×4)
     matagi_max_count: int           # 종목당 최대 물타기 횟수 (0 = 비활성화)
+    matagi_interval_minutes: int    # 독립 물타기 모니터 주기(분). 0 = 비활성화 (기본 5)
+    matagi_ma_period: int           # 물타기 MA 기간 (기본 20)
+    matagi_use_ma_filter: bool      # 물타기 MA 추세 필터 사용 여부 (기본 true)
+    matagi_vol_lookback: int        # 물타기 거래량 비교 기간 (기본 5)
+    matagi_use_rebound_filter: bool # 물타기 반등 신호(양봉/거래량) 필터 사용 여부 (기본 true)
+    matagi_stage_multipliers: tuple # 물타기 단계별 하락 배율 (기본 1.0,2.5,4.0)
+    bultagi_profit_pct: float       # 불타기 1차 수익 기준 (%, 1차=×1 / 2차=×2.0 / 3차=×3.0, 0 = 비활성화)
+    bultagi_max_count: int          # 종목당 최대 불타기 횟수 (0 = 비활성화)
+    bultagi_interval_minutes: int   # 독립 불타기 모니터 주기(분). 0 = 비활성화 (기본 5)
+    bultagi_ma_period: int          # 불타기 MA 기간 (기본 20)
+    bultagi_use_ma_filter: bool     # 불타기 MA 추세 필터 사용 여부 (기본 true)
+    bultagi_stage_multipliers: tuple # 불타기 단계별 수익 배율 (기본 1.0,2.0,3.0)
     market_regime_enabled: bool     # 시장 국면 필터 활성화 (하락장 매수 차단)
     market_regime_index_code: str   # 지수 프록시 종목 코드 (기본: 069500 = KODEX 200)
     market_regime_ma_period: int    # 지수 MA 기간 (0 = MA 체크 비활성, 기본 60)
@@ -135,6 +147,22 @@ def load_config() -> Config:
         morning_stoploss_enabled=os.getenv(f"MORNING_STOPLOSS_ENABLED_{mode.upper()}", os.getenv("MORNING_STOPLOSS_ENABLED", "false")).lower() == "true",
         matagi_drop_pct=float(os.getenv(f"MATAGI_DROP_PCT_{mode.upper()}", os.getenv("MATAGI_DROP_PCT", "2.0"))),
         matagi_max_count=int(os.getenv(f"MATAGI_MAX_COUNT_{mode.upper()}", os.getenv("MATAGI_MAX_COUNT", "2"))),
+        matagi_interval_minutes=int(os.getenv(f"MATAGI_INTERVAL_MINUTES_{mode.upper()}", os.getenv("MATAGI_INTERVAL_MINUTES", "5"))),
+        matagi_ma_period=int(os.getenv(f"MATAGI_MA_PERIOD_{mode.upper()}", os.getenv("MATAGI_MA_PERIOD", "20"))),
+        matagi_use_ma_filter=os.getenv(f"MATAGI_USE_MA_FILTER_{mode.upper()}", os.getenv("MATAGI_USE_MA_FILTER", "true")).lower() == "true",
+        matagi_vol_lookback=int(os.getenv(f"MATAGI_VOL_LOOKBACK_{mode.upper()}", os.getenv("MATAGI_VOL_LOOKBACK", "5"))),
+        matagi_use_rebound_filter=os.getenv(f"MATAGI_USE_REBOUND_FILTER_{mode.upper()}", os.getenv("MATAGI_USE_REBOUND_FILTER", "true")).lower() == "true",
+        matagi_stage_multipliers=tuple(
+            float(x) for x in os.getenv(f"MATAGI_STAGE_MULTIPLIERS_{mode.upper()}", os.getenv("MATAGI_STAGE_MULTIPLIERS", "1.0,2.5,4.0")).split(",")
+        ),
+        bultagi_profit_pct=float(os.getenv(f"BULTAGI_PROFIT_PCT_{mode.upper()}", os.getenv("BULTAGI_PROFIT_PCT", "0"))),
+        bultagi_max_count=int(os.getenv(f"BULTAGI_MAX_COUNT_{mode.upper()}", os.getenv("BULTAGI_MAX_COUNT", "2"))),
+        bultagi_interval_minutes=int(os.getenv(f"BULTAGI_INTERVAL_MINUTES_{mode.upper()}", os.getenv("BULTAGI_INTERVAL_MINUTES", "5"))),
+        bultagi_ma_period=int(os.getenv(f"BULTAGI_MA_PERIOD_{mode.upper()}", os.getenv("BULTAGI_MA_PERIOD", "20"))),
+        bultagi_use_ma_filter=os.getenv(f"BULTAGI_USE_MA_FILTER_{mode.upper()}", os.getenv("BULTAGI_USE_MA_FILTER", "true")).lower() == "true",
+        bultagi_stage_multipliers=tuple(
+            float(x) for x in os.getenv(f"BULTAGI_STAGE_MULTIPLIERS_{mode.upper()}", os.getenv("BULTAGI_STAGE_MULTIPLIERS", "1.0,2.0,3.0")).split(",")
+        ),
         market_regime_enabled=os.getenv(f"MARKET_REGIME_ENABLED_{mode.upper()}", os.getenv("MARKET_REGIME_ENABLED", "false" if mode == "mock" else "true")).lower() == "true",
         market_regime_index_code=os.getenv("MARKET_REGIME_INDEX_CODE", "069500"),
         market_regime_ma_period=int(os.getenv("MARKET_REGIME_MA_PERIOD", "60")),
