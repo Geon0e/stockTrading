@@ -420,6 +420,23 @@ def _save_holdings_snapshot(mode: str, items: list) -> None:
     path.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
 
 
+def _flush_holdings_snapshot(ctx: dict) -> None:
+    """holdings_cache → holdings_{mode}.json 즉시 저장 (현재가/수익률 없이)."""
+    mode = ctx["config"].mode
+    snapshot = [
+        {
+            "code": code,
+            "name": get_stock_name(code) or "",
+            "qty": info["qty"],
+            "avg_price": float(info.get("avg_price") or 0),
+            "current_price": None,
+            "profit_pct": None,
+        }
+        for code, info in ctx.get("holdings_cache", {}).items()
+    ]
+    _save_holdings_snapshot(mode, snapshot)
+
+
 def _get_today_buys(mode: str) -> set:
     """오늘 매수된 종목 코드 셋 반환 (트레이드 로그 기반)."""
     today = str(datetime.date.today())
@@ -725,6 +742,8 @@ def run_domestic_cycle(ctx: dict) -> None:
             bought = _run_domestic_cycle(ctx, token, skip_buy=skip_buy)
         if bought > 0:
             ctx["domestic_buy_date"] = today
+            # 매수 직후 포트폴리오 스냅샷 즉시 갱신 (손절 체크 주기 전에 대시보드에 반영)
+            _flush_holdings_snapshot(ctx)
     except Exception as e:
         logger.error(f"국내 사이클 오류: {e}", exc_info=True)
 
