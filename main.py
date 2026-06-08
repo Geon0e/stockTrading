@@ -489,7 +489,12 @@ def _run_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> int:
         return 0
     per_position = min(config.mock_budget // config.max_positions, remaining)
     if capacity > 0:
-        candidates = ctx["screener"].scan(token, all_stocks=config.scan_all_stocks)
+        if config.buy_source == "grid":
+            from market.grid_screener import recommended_candidates
+            candidates = recommended_candidates(mode=config.mode, exclude=config.exclude_list)
+            logger.info(f"[그리드매수] 추천 후보 {len(candidates)}개")
+        else:
+            candidates = ctx["screener"].scan(token, all_stocks=config.scan_all_stocks)
         if candidates:
             _notify_scan(ctx, candidates)
         for candidate in candidates:
@@ -1081,6 +1086,43 @@ def _start_ws_price_writer(rtp, stop_event: threading.Event) -> None:
     threading.Thread(target=_loop, name="ws-price-writer", daemon=True).start()
 
 
+def _start_ws_watchlist_subscriber(rtp, stop_event: threading.Event, holdings_provider) -> None:
+    """대시보드 스크리너 워치리스트(.token_cache/rt_watch.json)를 주기적으로 읽어
+    봇의 기존 WS에 추가 구독한다. 보유 종목은 절대 해제하지 않는다."""
+    watch_path = Path(".token_cache") / "rt_watch.json"
+    added: set = set()  # 워치리스트로 인해 구독한 코드 (보유 구독과 분리 관리)
+
+    def _read() -> set:
+        if not watch_path.exists():
+            return set()
+        try:
+            return set(json.loads(watch_path.read_text(encoding="utf-8")).get("codes", []))
+        except Exception:
+            return set()
+
+    def _loop():
+        nonlocal added
+        logger.info("[WS워치] 워치리스트 구독 동기화 스레드 시작")
+        while not stop_event.is_set():
+            try:
+                desired = _read()
+                holds = holdings_provider() or set()
+                # 워치리스트에서 빠졌고 보유도 아닌 종목만 구독 해제
+                to_unsub = [c for c in (added - desired) if c not in holds]
+                if to_unsub:
+                    rtp.unsubscribe(to_unsub)
+                    added -= set(to_unsub)
+                if desired:
+                    rtp.subscribe(list(desired))  # subscribe는 내부적으로 중복 무시
+                    added |= desired
+            except Exception as e:
+                logger.debug(f"[WS워치] 오류: {e}")
+            stop_event.wait(3)
+        logger.info("[WS워치] 워치리스트 구독 동기화 스레드 종료")
+
+    threading.Thread(target=_loop, name="ws-watchlist", daemon=True).start()
+
+
 def _get_current_scan_interval(config) -> int:
     """현재 KST 시각 기준 국내 스캔 주기(분) 반환. 장 외 시간이면 0."""
     now = datetime.datetime.now(KST).time()
@@ -1172,6 +1214,25 @@ def main() -> None:
 
     if ctx["realtime_price"]:
         _start_ws_price_writer(ctx["realtime_price"], stop_event)
+        # 대시보드 스크리너 워치리스트를 봇 WS에 추가 구독 (보유 종목과 분리 관리)
+        _start_ws_watchlist_subscriber(
+            ctx["realtime_price"], stop_event, lambda: set(ctx["holdings_cache"].keys())
+        )
+
+    # BUY_SOURCE=grid: 그리드 추천 후보 캐시 예열 (첫 매수 사이클 타임아웃 방지)
+    if config.buy_source == "grid":
+        logger.info("[그리드매수] BUY_SOURCE=grid — 그리드 스크리닝 ⭐추천 종목으로 매수")
+
+        def _warm_grid():
+            try:
+                from market.grid_screener import recommended_candidates
+                logger.info("[그리드매수] 추천 후보 캐시 예열 중 (전종목 스캔, 수 분 소요)...")
+                n = len(recommended_candidates(mode=config.mode, exclude=config.exclude_list))
+                logger.info(f"[그리드매수] 예열 완료 — 추천 {n}개 캐시")
+            except Exception as e:
+                logger.warning(f"[그리드매수] 예열 실패: {e}")
+
+        threading.Thread(target=_warm_grid, daemon=True, name="grid-warmup").start()
 
     # real 모드: 봇 시작 시 KIS API 체결 내역으로 당일 예산 현황 초기화
     if config.mode == "real":

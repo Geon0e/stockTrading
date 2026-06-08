@@ -66,6 +66,7 @@ class Config:
     scan_interval_late: int    # 장 후반 14:30~15:20 스캔 주기(분). 0 = 비활성
     watchlist: tuple        # 커스텀 스캔 종목 리스트. 비어있으면 기본 스캔(전종목/거래량 상위)
     exclude_list: tuple     # 거래 제외 종목 코드 리스트 (모드 무관 적용)
+    buy_source: str         # "strategy" (설정 기반 전략) | "grid" (그리드 스크리닝 추천)
     order_type: str         # "market" | "limit"
     limit_order_pct: float  # 지정가 주문 시 포착 가격 대비 허용 % (예: 1.0 → 신호가 × 1.01)
     monitor_interval_seconds: int  # 손절/익절 모니터링 주기(초). 기본 60초
@@ -140,6 +141,7 @@ def load_config() -> Config:
         order_quantity=int(os.getenv(f"ORDER_QUANTITY_{mode.upper()}", os.getenv("ORDER_QUANTITY", "0"))),
         watchlist=tuple(c.strip() for c in os.getenv(f"WATCHLIST_{mode.upper()}", os.getenv("WATCHLIST", "")).split(",") if c.strip()),
         exclude_list=tuple(c.strip() for c in os.getenv(f"EXCLUDE_LIST_{mode.upper()}", os.getenv("EXCLUDE_LIST", "")).split(",") if c.strip()),
+        buy_source=os.getenv(f"BUY_SOURCE_{mode.upper()}", os.getenv("BUY_SOURCE", "strategy")).strip().lower(),
         order_type=os.getenv(f"ORDER_TYPE_{mode.upper()}", "market"),
         limit_order_pct=float(os.getenv(f"LIMIT_ORDER_PCT_{mode.upper()}", "1.0")),
         monitor_interval_seconds=int(os.getenv(f"MONITOR_INTERVAL_SECONDS_{mode.upper()}", os.getenv("MONITOR_INTERVAL_SECONDS", "1" if mode == "real" else "60"))),

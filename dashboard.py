@@ -14,6 +14,7 @@ from pathlib import Path
 from flask import Flask, Response, jsonify, redirect, render_template, request, session, stream_with_context
 
 from market.weekly_chart import build_chart
+from market.grid_screener import screen as grid_screen
 
 app = Flask(__name__)
 
@@ -350,6 +351,108 @@ def api_weekly_chart():
         return jsonify({"ok": False, "error": f"차트 생성 실패: {e}"}), 500
 
 
+@app.route("/api/grid-screen")
+def api_grid_screen():
+    mode = _valid_mode(request.args.get("mode"))
+    try:
+        tol = float(request.args.get("tol", 1.5))
+    except (TypeError, ValueError):
+        tol = 1.5
+    try:
+        weeks = int(request.args.get("weeks", 100))
+    except (TypeError, ValueError):
+        weeks = 100
+    # 멤버 캐시가 없으면 식별에 수 분 걸리므로 동기 요청에서는 빌드하지 않는다.
+    build = request.args.get("build") == "1"
+    try:
+        return jsonify(grid_screen(mode=mode, tol_pct=tol, weeks=weeks, build_if_missing=build))
+    except Exception as e:
+        logging.exception("그리드 스크리닝 실패")
+        return jsonify({"ok": False, "error": f"스크리닝 실패: {e}"}), 500
+
+
+# ── 실시간 시세 (봇 WS 경유) ──────────────────────────────────────────────
+# 대시보드는 WS를 직접 열지 않는다(KIS는 앱키당 WS 세션 1개만 허용 → 봇과 충돌).
+# 워치리스트를 파일에 쓰면 봇이 읽어 기존 WS에 추가 구독하고 ws_prices_real.json에
+# 기록하며, 대시보드는 그 파일을 읽어 SSE로 전달한다. (포트폴리오 스트림과 동일 구조)
+_RT_WATCH_FILE = _BASE / ".token_cache" / "rt_watch.json"
+
+
+def _rt_watch_codes() -> list:
+    if _RT_WATCH_FILE.exists():
+        try:
+            return json.loads(_RT_WATCH_FILE.read_text()).get("codes", [])
+        except Exception:
+            return []
+    return []
+
+
+@app.route("/api/realtime/subscribe", methods=["POST"])
+def api_rt_subscribe():
+    data = request.get_json(silent=True) or {}
+    codes = [c for c in (data.get("codes") or []) if isinstance(c, str) and c.isdigit() and len(c) == 6]
+    codes = list(dict.fromkeys(codes))[:40]  # 중복 제거, KIS 실시간 등록 한도(~41) 고려
+    if not codes:
+        return jsonify({"ok": False, "error": "구독할 종목이 없습니다"}), 400
+    _RT_WATCH_FILE.parent.mkdir(exist_ok=True)
+    _RT_WATCH_FILE.write_text(json.dumps({"codes": codes}))
+    ws = _load_ws_prices()
+    prices = {c: ws[c] for c in codes if c in ws}
+    return jsonify({"ok": True, "codes": codes, "prices": prices,
+                    "bot_running": _bot_status("real")["running"]})
+
+
+@app.route("/api/realtime/stop", methods=["POST"])
+def api_rt_stop():
+    _RT_WATCH_FILE.write_text(json.dumps({"codes": []}))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/realtime/watch")
+def api_rt_watch():
+    codes = _rt_watch_codes()
+    ws = _load_ws_prices()
+    return jsonify({"ok": True, "codes": codes,
+                    "prices": {c: ws[c] for c in codes if c in ws},
+                    "bot_running": _bot_status("real")["running"]})
+
+
+@app.route("/stream/realtime")
+def stream_realtime():
+    """워치리스트 실시간 체결가 SSE 스트림 (봇이 기록한 ws_prices_real.json 경유)."""
+    def generate():
+        codes = set(_rt_watch_codes())
+        ws = _load_ws_prices()
+        initial = {c: ws[c] for c in codes if c in ws}
+        yield f"event: initial\ndata: {json.dumps(initial, ensure_ascii=False)}\n\n"
+        prev = {c: pd["price"] for c, pd in initial.items()}
+        reload_at = time.time() + 5
+
+        while True:
+            time.sleep(1)
+            if time.time() >= reload_at:
+                codes = set(_rt_watch_codes())  # 워치리스트 변경 반영
+                reload_at = time.time() + 5
+            ws = _load_ws_prices()
+            sent = False
+            for c in codes:
+                pd = ws.get(c)
+                if not pd or prev.get(c) == pd["price"]:
+                    continue
+                payload = {"code": c, "price": pd["price"], "prdy_ctrt": pd.get("prdy_ctrt", 0)}
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                prev[c] = pd["price"]
+                sent = True
+            if not sent:
+                yield ": heartbeat\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        content_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @app.route("/api/bot/start", methods=["POST"])
 def api_bot_start():
     err = _require_admin();
@@ -519,6 +622,7 @@ def api_get_config():
         "market_regime_rsi_min": float(env.get("MARKET_REGIME_RSI_MIN", "40")),
         "order_type": env.get(f"ORDER_TYPE_{m}", "market"),
         "limit_order_pct": float(env.get(f"LIMIT_ORDER_PCT_{m}", "1.0")),
+        "buy_source": env.get(f"BUY_SOURCE_{m}", env.get("BUY_SOURCE", "strategy")),
     }
     if mode == "real":
         result["usd_budget"] = float(env.get("REAL_USD_BUDGET", "750.0"))
@@ -806,6 +910,11 @@ def api_save_restart():
         val = cfg["order_type"] if cfg["order_type"] in ("market", "limit") else "market"
         _write_env_key(f"ORDER_TYPE_{mode.upper()}", val)
         changes["주문 방식"] = "시장가" if val == "market" else "지정가"
+
+    if "buy_source" in cfg:
+        val = cfg["buy_source"] if cfg["buy_source"] in ("strategy", "grid") else "strategy"
+        _write_env_key(f"BUY_SOURCE_{mode.upper()}", val)
+        changes["매수 종목 선정"] = "그리드 추천" if val == "grid" else "설정 전략"
 
     if "limit_order_pct" in cfg:
         val = float(cfg["limit_order_pct"])

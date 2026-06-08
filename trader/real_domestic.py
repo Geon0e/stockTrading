@@ -160,12 +160,22 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
 
     def _run_scan():
         try:
-            ctx["screener"].scan(
-                token,
-                all_stocks=config.scan_all_stocks,
-                signal_queue=signal_queue,
-                stop_event=stop_event,
-            )
+            if config.buy_source == "grid":
+                # 그리드 스크리닝 ⭐추천 종목으로 매수 (30분 캐시 — 시작 시 예열 권장)
+                from market.grid_screener import recommended_candidates
+                cands = recommended_candidates(mode=config.mode, exclude=config.exclude_list)
+                logger.info(f"[실전] 그리드 추천 후보 {len(cands)}개 매수 큐 투입")
+                for c in cands:
+                    if stop_event.is_set():
+                        break
+                    signal_queue.put(c)
+            else:
+                ctx["screener"].scan(
+                    token,
+                    all_stocks=config.scan_all_stocks,
+                    signal_queue=signal_queue,
+                    stop_event=stop_event,
+                )
         except Exception as e:
             logger.warning(f"[실전] 스캔 스레드 오류: {e}")
         finally:
