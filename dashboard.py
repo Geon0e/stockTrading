@@ -13,6 +13,8 @@ from pathlib import Path
 
 from flask import Flask, Response, jsonify, redirect, render_template, request, session, stream_with_context
 
+from market.weekly_chart import build_chart
+
 app = Flask(__name__)
 
 # ── 시크릿 키: 환경변수 필수, 없으면 재시작마다 새로 생성 (세션 초기화됨) ─────────
@@ -328,6 +330,24 @@ def api_status():
         "mock": _bot_status("mock"),
         "real": _bot_status("real"),
     })
+
+
+@app.route("/api/weekly-chart")
+def api_weekly_chart():
+    code = (request.args.get("code") or "").strip()
+    mode = _valid_mode(request.args.get("mode"))
+    try:
+        weeks = int(request.args.get("weeks", 100))
+    except (TypeError, ValueError):
+        weeks = 100
+    try:
+        data = build_chart(code, weeks, mode)
+        return jsonify({"ok": True, **data})
+    except (ValueError, RuntimeError) as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        logging.exception("주봉 차트 생성 실패")
+        return jsonify({"ok": False, "error": f"차트 생성 실패: {e}"}), 500
 
 
 @app.route("/api/bot/start", methods=["POST"])

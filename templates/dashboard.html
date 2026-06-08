@@ -106,6 +106,8 @@ header {
 }
 .pane-left  { width: 54%; }
 .pane-right { flex: 1; }
+/* 차트 확대: 로그 패널 숨기고 차트가 전체 폭 사용 */
+.body.chart-max .pane-left { display: none; }
 
 /* ── Log tabs ── */
 .log-tabs { display: flex; gap: 0; }
@@ -363,7 +365,10 @@ code { color: #60a5fa; font-size: 11px; }
   .st-name { min-width: unset; }
   .cfg-input { width: 60px; font-size: 12px; padding: 4px 6px; }
 }
+.tf-btn { background: #1a1a1a; color: #888; }
+.tf-btn.active { background: #1d4ed8; color: #fff; }
 </style>
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
 
@@ -418,6 +423,7 @@ code { color: #60a5fa; font-size: 11px; }
   <button class="mob-tab"        id="mobTabPortfolio" onclick="switchMobTab('portfolio')">📊 보유</button>
   <button class="mob-tab"        id="mobTabDaily"     onclick="switchMobTab('daily')">🗓 금일</button>
   <button class="mob-tab"        id="mobTabTrades"    onclick="switchMobTab('trades')">💼 거래내역</button>
+  <button class="mob-tab"        id="mobTabChart"     onclick="switchMobTab('chart')">📈 차트</button>
   <button class="mob-tab"        id="mobTabSettings"  onclick="switchMobTab('settings')">⚙️ 설정</button>
   <button class="mob-tab"        id="mobTabHistory"   onclick="switchMobTab('history')">📜 히스토리</button>
 </div>
@@ -447,6 +453,7 @@ code { color: #60a5fa; font-size: 11px; }
         <button class="right-tab active" id="rtabPortfolio" onclick="switchRightTab('portfolio')">📊 포트폴리오</button>
         <button class="right-tab"        id="rtabDaily"     onclick="switchRightTab('daily')">🗓 금일 현황</button>
         <button class="right-tab"        id="rtabTrades"    onclick="switchRightTab('trades')">💼 거래내역</button>
+        <button class="right-tab"        id="rtabChart"     onclick="switchRightTab('chart')">📈 차트</button>
         <button class="right-tab"        id="rtabSettings"  onclick="switchRightTab('settings')">⚙️ 설정</button>
         <button class="right-tab"        id="rtabHistory"   onclick="switchRightTab('history')">📜 히스토리</button>
       </div>
@@ -943,6 +950,36 @@ code { color: #60a5fa; font-size: 11px; }
       </div>
     </div>
 
+    <!-- 주봉 작도 차트 -->
+    <div id="chartPanel" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+      <div style="background:#0f0f0f;border-bottom:1px solid #1e1e1e;padding:6px 10px;display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap">
+        <input id="chartCode" class="cfg-input" style="width:90px" placeholder="종목코드" value="006800"
+               onkeydown="if(event.key==='Enter')loadChart()">
+        <select id="chartWeeks" class="cfg-select" style="font-size:12px;padding:3px 7px">
+          <option value="52">52주</option>
+          <option value="100" selected>100주</option>
+          <option value="120">120주</option>
+        </select>
+        <button class="btn-sm" onclick="loadChart()">그리기</button>
+        <span style="display:inline-flex;border:1px solid #2a2a2a;border-radius:5px;overflow:hidden;margin-left:4px">
+          <button class="btn-sm tf-btn active" id="tfW" style="border:0;border-radius:0" onclick="setTF('W')">주봉</button>
+          <button class="btn-sm tf-btn"        id="tfD" style="border:0;border-radius:0" onclick="setTF('D')">일봉</button>
+        </span>
+        <span style="display:inline-flex;border:1px solid #2a2a2a;border-radius:5px;overflow:hidden;margin-left:2px">
+          <button class="btn-sm tf-btn active" id="tgGrid" style="border:0;border-radius:0" onclick="toggleGroup('grid')">그리드</button>
+          <button class="btn-sm tf-btn"        id="tgDraw" style="border:0;border-radius:0" onclick="toggleGroup('draw')">작도선</button>
+        </span>
+        <button class="btn-sm" id="chartExpandBtn" title="확대/복원 (차트 클릭으로도 전환)" onclick="toggleChartExpand()">⛶ 확대</button>
+        <span id="chartTitle" style="font-size:11px;color:#888;margin-left:4px"></span>
+        <span id="chartStatus" style="font-size:11px;color:#f59e0b;margin-left:auto"></span>
+      </div>
+      <div id="chartLegend" style="display:flex;flex-wrap:wrap;gap:4px 12px;padding:5px 10px;background:#0d0d0d;border-bottom:1px solid #1a1a1a;font-size:10px"></div>
+      <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+        <div id="priceChart" style="flex:3;min-height:0"></div>
+        <div id="rsiChart" style="flex:1;min-height:90px;border-top:1px solid #1e1e1e"></div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -1252,10 +1289,12 @@ function switchRightTab(tab) {
   document.getElementById('tradesPanel').style.display    = tab === 'trades'    ? 'flex' : 'none';
   document.getElementById('settingsPanel').style.display  = tab === 'settings'  ? '' : 'none';
   document.getElementById('historyPanel').style.display   = tab === 'history'   ? '' : 'none';
+  document.getElementById('chartPanel').style.display     = tab === 'chart'     ? 'flex' : 'none';
   document.getElementById('tradesRefreshBtn').style.display = (tab === 'portfolio' || tab === 'trades') ? '' : 'none';
   document.getElementById('rtabPortfolio').classList.toggle('active', tab === 'portfolio');
   document.getElementById('rtabDaily').classList.toggle('active',     tab === 'daily');
   document.getElementById('rtabTrades').classList.toggle('active',    tab === 'trades');
+  document.getElementById('rtabChart').classList.toggle('active',     tab === 'chart');
   document.getElementById('rtabSettings').classList.toggle('active',  tab === 'settings');
   document.getElementById('rtabHistory').classList.toggle('active',   tab === 'history');
   if (tab === 'settings')  { loadSettings(); loadStrategy(); setTimeout(() => applyRole(userRole), 100); }
@@ -1263,6 +1302,8 @@ function switchRightTab(tab) {
   if (tab === 'trades')    loadTradeDates();
   if (tab === 'history')   loadSettingsHistory();
   if (tab === 'daily')     loadDailyDates();
+  if (tab === 'chart')     { if (!chartObj) loadChart(); else setTimeout(resizeCharts, 50); }
+  else if (chartExpanded)  toggleChartExpand();  // 차트 탭을 벗어나면 확대 복원
 }
 
 function refreshRight() {
@@ -1675,11 +1716,196 @@ function loadStrategy() {
 }
 
 
+// ── 주봉/일봉 작도 차트 ─────────────────────────────
+let chartObj = null, rsiChartObj = null, candleSeries = null, chartSyncing = false;
+let chartData = null;   // 마지막 API 응답 (주봉+일봉+작도선 캐시)
+let chartTF = 'W';      // 'W' 주봉 | 'D' 일봉
+let showGroups = { grid: true, draw: false };  // 표시할 선 그룹
+
+function resizeCharts() {
+  if (chartObj) chartObj.timeScale().fitContent();
+  if (rsiChartObj) rsiChartObj.timeScale().fitContent();
+}
+
+function initCharts() {
+  const common = {
+    autoSize: true,
+    layout: { background: { color: '#0a0a0a' }, textColor: '#888', fontFamily: "'Courier New', monospace" },
+    grid: { vertLines: { color: '#1a1a1a' }, horzLines: { color: '#1a1a1a' } },
+    rightPriceScale: { borderColor: '#252525' },
+    timeScale: { borderColor: '#252525', timeVisible: false },
+    crosshair: { mode: 0 },
+  };
+  chartObj    = LightweightCharts.createChart(document.getElementById('priceChart'), common);
+  rsiChartObj = LightweightCharts.createChart(document.getElementById('rsiChart'), common);
+  // 두 차트 시간축 동기화
+  const sync = (src, dst) => src.timeScale().subscribeVisibleLogicalRangeChange(r => {
+    if (chartSyncing || !r) return;
+    chartSyncing = true; dst.timeScale().setVisibleLogicalRange(r); chartSyncing = false;
+  });
+  sync(chartObj, rsiChartObj); sync(rsiChartObj, chartObj);
+}
+
+// 작도선 앵커(날짜)를 현재 타임프레임 봉 인덱스에 매핑해 직선을 다시 그린다.
+// → 주봉으로 그은 선을 일봉에서도 같은 피벗에 맞춰 검증 가능.
+function nearestIdx(candles, t) {
+  if (!candles.length || t <= candles[0].time) return 0;
+  if (t >= candles[candles.length - 1].time) return candles.length - 1;
+  let lo = 0, hi = candles.length - 1;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (candles[mid].time < t) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+
+function buildLinePoints(line, candles) {
+  const ia = nearestIdx(candles, line.a.time);
+  const ib = nearestIdx(candles, line.b.time);
+  if (ia === ib) return [];
+  const slope = (line.b.value - line.a.value) / (ib - ia);
+  const out = [];
+  // 차트 전체 폭으로 직선 연장 (앵커 양쪽 모두)
+  for (let i = 0; i < candles.length; i++)
+    out.push({ time: candles[i].time, value: Math.round(line.a.value + slope * (i - ia)) });
+  return out;
+}
+
+function setTF(tf) {
+  if (!chartData) return;
+  chartTF = tf;
+  document.getElementById('tfW').classList.toggle('active', tf === 'W');
+  document.getElementById('tfD').classList.toggle('active', tf === 'D');
+  renderChart();
+}
+
+function toggleGroup(g) {
+  showGroups[g] = !showGroups[g];
+  document.getElementById(g === 'grid' ? 'tgGrid' : 'tgDraw').classList.toggle('active', showGroups[g]);
+  if (chartData) renderChart();
+}
+
+// 차트 확대: 로그 패널을 숨기고 차트를 전체 폭으로. 차트 클릭으로도 전환.
+let chartExpanded = false;
+function toggleChartExpand() {
+  chartExpanded = !chartExpanded;
+  document.querySelector('.body').classList.toggle('chart-max', chartExpanded);
+  const btn = document.getElementById('chartExpandBtn');
+  if (btn) btn.textContent = chartExpanded ? '⛶ 복원' : '⛶ 확대';
+  setTimeout(resizeCharts, 80);  // autoSize ResizeObserver 후 시간축 재정렬
+}
+
+// 차트 영역 클릭으로 확대/복원 (드래그=패닝과 구분: 이동 6px 미만일 때만 토글)
+function bindChartExpandClicks() {
+  ['priceChart', 'rsiChart'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    let sx = 0, sy = 0, moved = false;
+    el.addEventListener('mousedown', e => { sx = e.clientX; sy = e.clientY; moved = false; });
+    el.addEventListener('mousemove', e => {
+      if (Math.abs(e.clientX - sx) > 6 || Math.abs(e.clientY - sy) > 6) moved = true;
+    });
+    el.addEventListener('mouseup', () => { if (!moved) toggleChartExpand(); });
+  });
+}
+bindChartExpandClicks();
+
+function loadChart() {
+  const code = document.getElementById('chartCode').value.trim();
+  const weeks = document.getElementById('chartWeeks').value;
+  const status = document.getElementById('chartStatus');
+  if (!/^\d{6}$/.test(code)) { status.style.color = '#f87171'; status.textContent = '종목코드 6자리를 입력하세요'; return; }
+  status.style.color = '#f59e0b'; status.textContent = '불러오는 중…';
+  fetch(`/api/weekly-chart?code=${code}&weeks=${weeks}&mode=${activeMode}`)
+    .then(r => r.json())
+    .then(d => {
+      if (!d.ok) { status.style.color = '#f87171'; status.textContent = d.error || '실패'; return; }
+      chartData = d;
+      if (chartTF === 'D' && !d.daily) chartTF = 'W';   // 일봉 없으면 주봉으로
+      document.getElementById('tfW').classList.toggle('active', chartTF === 'W');
+      document.getElementById('tfD').classList.toggle('active', chartTF === 'D');
+      renderChart();
+      status.textContent = '';
+    })
+    .catch(() => { status.style.color = '#f87171'; status.textContent = '요청 실패'; });
+}
+
+function renderChart() {
+  const d = chartData;
+  if (!d) return;
+  const tf = (chartTF === 'D' && d.daily) ? d.daily : d.weekly;
+  const tfLabel = (tf === d.daily) ? '일봉' : '주봉';
+
+  if (chartObj) { chartObj.remove(); rsiChartObj.remove(); }
+  chartObj = rsiChartObj = null;
+  initCharts();
+
+  candleSeries = chartObj.addCandlestickSeries({
+    upColor: '#ef4444', downColor: '#3b82f6', borderUpColor: '#ef4444',
+    borderDownColor: '#3b82f6', wickUpColor: '#ef4444', wickDownColor: '#3b82f6',
+  });
+  candleSeries.setData(tf.candles);
+
+  // 거래량 (하단 오버레이)
+  const vol = chartObj.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
+  chartObj.priceScale('vol').applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+  vol.setData(tf.volumes);
+
+  // 작도선/그리드 (주봉 기준 앵커 → 현재 타임프레임에 매핑, 표시 그룹만)
+  const visibleLines = (d.lines || []).filter(l => showGroups[l.group !== 'grid' ? 'draw' : 'grid']);
+  visibleLines.forEach(l => {
+    const pts = buildLinePoints(l, tf.candles);
+    if (!pts.length) return;
+    const s = chartObj.addLineSeries({
+      color: l.color, lineWidth: l.label.indexOf('중심') >= 0 ? 1 : (l.group === 'grid' ? 1 : 2),
+      lineStyle: l.dash ? LightweightCharts.LineStyle.Dashed : LightweightCharts.LineStyle.Solid,
+      lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false,
+    });
+    s.setData(pts);
+  });
+
+  // 피보나치 되돌림 (수평선 — 두 타임프레임 공통)
+  (d.fib || []).forEach(f => candleSeries.createPriceLine({
+    price: f.price, color: '#a78bfa99', lineWidth: 1,
+    lineStyle: LightweightCharts.LineStyle.Dotted, axisLabelVisible: true, title: f.label,
+  }));
+
+  // RSI (하단 차트, 해당 타임프레임 기준)
+  const rsiS = rsiChartObj.addLineSeries({ color: '#eab308', lineWidth: 1 });
+  rsiS.setData(tf.rsi);
+  [30, 50, 70].forEach(lv => rsiS.createPriceLine({
+    price: lv, color: lv === 50 ? '#555' : '#3a3a3a', lineWidth: 1,
+    lineStyle: LightweightCharts.LineStyle.Dashed, axisLabelVisible: true, title: String(lv),
+  }));
+
+  chartObj.timeScale().fitContent();
+  rsiChartObj.timeScale().fitContent();
+
+  document.getElementById('chartTitle').textContent =
+    `${d.name || d.code} (${d.code}) · ${tfLabel} ${tf.count} · 종가 ${Number(tf.lastClose).toLocaleString()} · RSI ${tf.lastRsi ?? '-'}`;
+  const legend = document.getElementById('chartLegend');
+  legend.innerHTML = '';
+  // 작도선은 개별 표기, 그리드는 9선을 한 항목으로 요약
+  visibleLines.filter(l => l.group !== 'grid').forEach(l => {
+    const span = document.createElement('span');
+    span.style.cssText = 'display:flex;align-items:center;gap:4px;color:#aaa';
+    span.innerHTML = `<span style="display:inline-block;width:14px;height:0;border-top:2px ${l.dash ? 'dashed' : 'solid'} ${l.color}"></span>${l.label}`;
+    legend.appendChild(span);
+  });
+  if (showGroups.grid && (d.lines || []).some(l => l.group === 'grid')) {
+    const g = document.createElement('span');
+    g.style.cssText = 'display:flex;align-items:center;gap:4px;color:#aaa';
+    g.innerHTML = `<span style="display:inline-block;width:14px;height:0;border-top:2px solid #22c55e"></span>평행채널 그리드(바닥~고점 8등분)`;
+    legend.appendChild(g);
+  }
+  const fibSpan = document.createElement('span');
+  fibSpan.style.color = '#a78bfa';
+  fibSpan.textContent = '⋯ 피보나치(0.236·0.382·0.5·0.618·0.786)';
+  legend.appendChild(fibSpan);
+}
+
 // ── 모바일 탭 ──────────────────────────────────────
 function switchMobTab(tab) {
   const logPane    = document.querySelector('.pane-left');
   const tradesPane = document.querySelector('.pane-right');
-  ['mobTabLog','mobTabPortfolio','mobTabDaily','mobTabTrades','mobTabSettings','mobTabHistory'].forEach(id =>
+  ['mobTabLog','mobTabPortfolio','mobTabDaily','mobTabTrades','mobTabChart','mobTabSettings','mobTabHistory'].forEach(id =>
     document.getElementById(id).classList.remove('active'));
 
   if (tab === 'log') {
@@ -1692,17 +1918,20 @@ function switchMobTab(tab) {
     document.getElementById('mobTabPortfolio').classList.toggle('active', tab === 'portfolio');
     document.getElementById('mobTabDaily').classList.toggle('active',     tab === 'daily');
     document.getElementById('mobTabTrades').classList.toggle('active',    tab === 'trades');
+    document.getElementById('mobTabChart').classList.toggle('active',     tab === 'chart');
     document.getElementById('mobTabSettings').classList.toggle('active',  tab === 'settings');
     document.getElementById('mobTabHistory').classList.toggle('active',   tab === 'history');
     document.getElementById('portfolioPanel').style.display = tab === 'portfolio' ? '' : 'none';
     document.getElementById('dailyPanel').style.display     = tab === 'daily'     ? 'flex' : 'none';
     document.getElementById('tradesPanel').style.display    = tab === 'trades'    ? 'flex' : 'none';
+    document.getElementById('chartPanel').style.display     = tab === 'chart'     ? 'flex' : 'none';
     document.getElementById('settingsPanel').style.display  = tab === 'settings'  ? '' : 'none';
     document.getElementById('historyPanel').style.display   = tab === 'history'   ? '' : 'none';
     document.getElementById('tradesRefreshBtn').style.display = (tab === 'portfolio' || tab === 'trades') ? '' : 'none';
     if (tab === 'portfolio') loadPortfolio();
     if (tab === 'daily')     loadDailyDates();
     if (tab === 'trades')    loadTradeDates();
+    if (tab === 'chart')     { if (!chartObj) loadChart(); else setTimeout(resizeCharts, 50); }
     if (tab === 'settings')  { loadSettings(); loadStrategy(); }
     if (tab === 'history')   loadSettingsHistory();
   }
