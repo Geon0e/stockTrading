@@ -975,7 +975,7 @@ code { color: #60a5fa; font-size: 11px; }
           <option value="100" selected>100주</option>
           <option value="120">120주</option>
         </select>
-        <button class="btn-sm" onclick="loadScreener()">스캔</button>
+        <button class="btn-sm" id="scrScanBtn" onclick="loadScreener()">스캔</button>
         <button class="btn-sm" id="rtBtn" onclick="toggleRealtime()" style="background:#15803d;color:#fff">📡 실시간 시작</button>
         <span id="rtDot" class="dot off" style="margin-left:2px"></span>
         <span id="scrStatus" style="font-size:11px;color:#f59e0b;margin-left:auto"></span>
@@ -1985,21 +1985,50 @@ function toggleChartRealtime() {
 // ── 코스피200 그리드 스크리너 ───────────────────────
 let screenerLoaded = false;
 
+let screenerScanning = false, _scrTimer = null, _scrStartTs = 0;
+
 function loadScreener() {
+  const status = document.getElementById('scrStatus');
+  const btn = document.getElementById('scrScanBtn');
+
+  // 이미 스캔 중이면 새로 시작하지 않고 진행 상황만 안내
+  if (screenerScanning) {
+    const s = Math.round((Date.now() - _scrStartTs) / 1000);
+    status.style.color = '#f59e0b';
+    status.textContent = `⏳ 이미 스캔 진행중입니다… ${s}s 경과 (완료까지 기다려 주세요)`;
+    return;
+  }
+
   if (rtSource) stopRealtime();   // 재스캔 시 이전 실시간 구독 정리
   const tol = document.getElementById('scrTol').value.trim() || '0.1';
   const weeks = document.getElementById('scrWeeks').value;
-  const status = document.getElementById('scrStatus');
+
+  screenerScanning = true;
+  _scrStartTs = Date.now();
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; btn.style.cursor = 'wait'; btn.textContent = '스캔중…'; }
   status.style.color = '#f59e0b';
-  status.textContent = '전종목 스캔 중… (수 분 소요)';
+  const tick = () => {
+    const s = Math.round((Date.now() - _scrStartTs) / 1000);
+    status.textContent = `⏳ 전종목 스캔 진행중… ${s}s 경과 (수 분 소요)`;
+  };
+  tick();
+  _scrTimer = setInterval(tick, 1000);
+
+  const finish = () => {
+    screenerScanning = false;
+    if (_scrTimer) { clearInterval(_scrTimer); _scrTimer = null; }
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = ''; btn.textContent = '스캔'; }
+  };
+
   fetch(`/api/grid-screen?tol=${tol}&weeks=${weeks}&mode=${activeMode}`)
     .then(r => r.json())
     .then(d => {
+      finish();
       if (!d.ok) { status.style.color = '#f87171'; status.textContent = d.error || '실패'; return; }
       screenerLoaded = true;
-      renderScreener(d);
+      renderScreener(d);   // 완료 상태 문구는 renderScreener가 설정
     })
-    .catch(() => { status.style.color = '#f87171'; status.textContent = '요청 실패'; });
+    .catch(() => { finish(); status.style.color = '#f87171'; status.textContent = '요청 실패'; });
 }
 
 let screenerResults = [];   // 현재 표시 중인 매칭 결과 (실시간 구독 대상)

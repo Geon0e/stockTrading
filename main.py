@@ -30,6 +30,8 @@ from notifications.telegram_notifier import (
 )
 
 import os
+import sys
+import fcntl
 import json
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
@@ -55,6 +57,7 @@ logging.basicConfig(level=logging.INFO, handlers=[_file_handler, _console_handle
 logger = logging.getLogger(__name__)
 
 KST = datetime.timezone(datetime.timedelta(hours=9))
+_MAX_WS_SUBS = 40  # KIS 실시간 WS 등록 한도(~41) 여유. 보유 종목 우선 배정
 
 from contextlib import contextmanager
 
@@ -1202,6 +1205,10 @@ def _start_ws_watchlist_subscriber(rtp, stop_event: threading.Event, holdings_pr
             try:
                 desired = _read()
                 holds = holdings_provider() or set()
+                # KIS WS 한도(~41) 초과 방지: 보유 종목 우선, 남는 슬롯만 워치리스트에 배정
+                room = max(0, _MAX_WS_SUBS - len(holds))
+                if len(desired) > room:
+                    desired = set(list(desired)[:room])
                 # 워치리스트에서 빠졌고 보유도 아닌 종목만 구독 해제
                 to_unsub = [c for c in (added - desired) if c not in holds]
                 if to_unsub:
@@ -1243,8 +1250,41 @@ def _next_aligned_run(interval_minutes: int, anchor: datetime.time) -> datetime.
     return anchor_dt + datetime.timedelta(seconds=periods * interval_seconds)
 
 
+_BOT_LOCK_FH = None  # 단일화 락 핸들 — 프로세스 생존 동안 유지(닫히면 락 해제)
+
+
+def _acquire_singleton_lock(mode: str) -> None:
+    """모드당 봇 1개만 실행되도록 flock 단일화 가드.
+
+    KIS 실시간 WS는 앱키당 연결 1개만 허용 → 중복 봇이 뜨면 'ALREADY IN USE'로
+    서로 끊으며 실시간이 마비된다. 이미 같은 모드 봇이 실행 중이면 즉시 종료한다.
+    (락은 프로세스가 죽으면 OS가 자동 해제하므로 stale PID 문제가 없다.)
+    """
+    global _BOT_LOCK_FH
+    fh = open(f".bot.{mode}.lock", "a+")
+    try:
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (BlockingIOError, OSError):
+        fh.seek(0)
+        other = fh.read().strip() or "?"
+        logger.error(
+            f"[중복방지] 이미 실행 중인 {mode} 봇이 있습니다 (PID {other}). "
+            f"중복 실행 시 WS 앱키 충돌·중복 주문이 발생하므로 종료합니다. "
+            f"기존 봇을 멈추려면: ./stop.sh {mode}  (또는 kill {other})"
+        )
+        sys.exit(1)
+    fh.seek(0)
+    fh.truncate()
+    fh.write(str(os.getpid()))
+    fh.flush()
+    _BOT_LOCK_FH = fh  # 핸들을 살려둬야 락이 유지됨
+
+
 def main() -> None:
     config = load_config()
+
+    # 중복 실행 방지 (모드당 1개) — WS 앱키 충돌·중복 주문 예방
+    _acquire_singleton_lock(config.mode)
 
     # 실행 중인 모드를 대시보드가 읽을 수 있도록 기록
     from pathlib import Path
