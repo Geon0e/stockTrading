@@ -648,7 +648,15 @@ code { color: #60a5fa; font-size: 11px; }
               <option value="strategy">설정 전략 (골든크로스 등)</option>
               <option value="grid">그리드 스크리닝 ⭐추천</option>
             </select>
-            <span class="cfg-hint">그리드: 전종목 주봉 그리드 추천 종목 매수 (스캔 수 분·30분 캐시)</span>
+            <span class="cfg-hint">그리드: 08:00 주봉 작도 고정 → 장중 현재가로 상승빗각 지지권 근접 매수</span>
+          </div>
+          <div class="cfg-row" style="gap:6px;flex-wrap:wrap;margin-top:8px">
+            <span class="cfg-hint">채널 익절</span>
+            <input type="number" id="cfgGridTpSteps" class="cfg-input" style="width:50px" min="1" max="8" step="1" placeholder="2">
+            <span class="cfg-hint">칸 위 도달 시 매도</span>
+            <span class="cfg-hint" style="margin-left:10px">채널 손절</span>
+            <input type="number" id="cfgGridSlPct" class="cfg-input" style="width:55px" min="0" step="0.1" placeholder="2.0">
+            <span class="cfg-hint">% (매수 지지선 아래 이탈, 0=끄기)</span>
           </div>
         </div>
 
@@ -957,7 +965,7 @@ code { color: #60a5fa; font-size: 11px; }
       <div style="background:#0f0f0f;border-bottom:1px solid #1e1e1e;padding:6px 10px;display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap">
         <span style="font-size:11px;color:#888">전종목 · 그리드선 근접</span>
         <span style="font-size:10px;color:#555">이격</span>
-        <input id="scrTol" class="cfg-input" style="width:50px" value="0.5"
+        <input id="scrTol" class="cfg-input" style="width:50px" value="0.1"
                onkeydown="if(event.key==='Enter')loadScreener()"><span style="font-size:10px;color:#555">%</span>
         <select id="scrWeeks" class="cfg-select" style="font-size:12px;padding:3px 7px">
           <option value="52">52주</option>
@@ -1405,6 +1413,8 @@ function saveAndRestart() {
     order_type:       document.querySelector('input[name="cfgOrderType"]:checked')?.value || 'market',
     limit_order_pct:  parseFloat(document.getElementById('cfgLimitPct').value) || 1.0,
     buy_source:       document.getElementById('cfgBuySource').value || 'strategy',
+    grid_tp_steps:    parseInt(document.getElementById('cfgGridTpSteps').value) || 2,
+    grid_sl_pct:      parseFloat(document.getElementById('cfgGridSlPct').value) || 0,
   };
   const budget = parseInt(document.getElementById('cfgBudget').value) || 0;
   const mp = parseInt(document.getElementById('cfgMaxPositions').value) || 0;
@@ -1547,6 +1557,8 @@ function loadSettings() {
     document.getElementById('cfgLimitPct').value = d.limit_order_pct ?? 1.0;
     document.getElementById('cfgLimitPctRow').style.display = isLimit ? 'flex' : 'none';
     document.getElementById('cfgBuySource').value = d.buy_source || 'strategy';
+    document.getElementById('cfgGridTpSteps').value = d.grid_tp_steps ?? 2;
+    document.getElementById('cfgGridSlPct').value = d.grid_sl_pct ?? 2.0;
   }).catch(() => {});
 }
 
@@ -1963,7 +1975,7 @@ let screenerLoaded = false;
 
 function loadScreener() {
   if (rtSource) stopRealtime();   // 재스캔 시 이전 실시간 구독 정리
-  const tol = document.getElementById('scrTol').value.trim() || '0.5';
+  const tol = document.getElementById('scrTol').value.trim() || '0.1';
   const weeks = document.getElementById('scrWeeks').value;
   const status = document.getElementById('scrStatus');
   status.style.color = '#f59e0b';

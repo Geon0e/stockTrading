@@ -67,6 +67,28 @@ def _headers(creds, token: str, tr_id: str) -> dict:
     }
 
 
+def _get_retry(url, headers, params, timeout=10, retries=3, backoff=0.6):
+    """5xx/연결 오류 시 재시도하는 GET (KIS 간헐적 500 대응).
+
+    재시도 후에도 5xx면 마지막 응답을 그대로 반환 → 호출자가 raise_for_status로 처리.
+    연결 자체가 계속 실패하면 마지막 예외를 raise.
+    """
+    resp = None
+    last_exc = None
+    for attempt in range(retries):
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=timeout)
+            if resp.status_code < 500:
+                return resp
+        except (requests.ConnectionError, requests.Timeout) as e:
+            resp, last_exc = None, e
+        if attempt < retries - 1:
+            time.sleep(backoff * (2 ** attempt))
+    if resp is None:
+        raise last_exc if last_exc else requests.ConnectionError(f"KIS 연결 실패 (재시도 {retries}회)")
+    return resp
+
+
 def _fetch_candles(code: str, count: int, period: str, creds, token: str) -> list[dict]:
     """OHLCV를 오래된 순으로 반환. period: 'D'(일봉) | 'W'(주봉).
 
@@ -89,7 +111,7 @@ def _fetch_candles(code: str, count: int, period: str, creds, token: str) -> lis
             "FID_PERIOD_DIV_CODE": period,
             "FID_ORG_ADJ_PRC": "0",
         }
-        resp = requests.get(url, headers=_headers(creds, token, _CHART_TR_ID), params=params, timeout=10)
+        resp = _get_retry(url, _headers(creds, token, _CHART_TR_ID), params)
         try:
             resp.raise_for_status()
         except requests.HTTPError:

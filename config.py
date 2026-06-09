@@ -69,6 +69,8 @@ class Config:
     buy_source: str         # "strategy" (설정 기반 전략) | "grid" (그리드 스크리닝 추천)
     order_type: str         # "market" | "limit"
     limit_order_pct: float  # 지정가 주문 시 포착 가격 대비 허용 % (예: 1.0 → 신호가 × 1.01)
+    grid_tp_steps: int      # 그리드 익절: 매수 그리드선 기준 N칸 위 도달 시 매도 (buy_source=grid 전용)
+    grid_sl_pct: float      # 그리드 손절: 매수 지지선 대비 -X% 이탈 시 매도 (0 = 손절 비활성)
     monitor_interval_seconds: int  # 손절/익절 모니터링 주기(초). 기본 60초
     morning_sell_profit_pct: float  # 장초 전일 보유 종목 익절 기준 (%, 0 = 비활성화)
     morning_stoploss_enabled: bool  # 10:30 전일 손실 종목 손절 활성화 여부
@@ -144,6 +146,8 @@ def load_config() -> Config:
         buy_source=os.getenv(f"BUY_SOURCE_{mode.upper()}", os.getenv("BUY_SOURCE", "strategy")).strip().lower(),
         order_type=os.getenv(f"ORDER_TYPE_{mode.upper()}", "market"),
         limit_order_pct=float(os.getenv(f"LIMIT_ORDER_PCT_{mode.upper()}", "1.0")),
+        grid_tp_steps=int(os.getenv(f"GRID_TP_STEPS_{mode.upper()}", os.getenv("GRID_TP_STEPS", "2"))),
+        grid_sl_pct=float(os.getenv(f"GRID_SL_PCT_{mode.upper()}", os.getenv("GRID_SL_PCT", "2.0"))),
         monitor_interval_seconds=int(os.getenv(f"MONITOR_INTERVAL_SECONDS_{mode.upper()}", os.getenv("MONITOR_INTERVAL_SECONDS", "1" if mode == "real" else "60"))),
         morning_sell_profit_pct=float(os.getenv(f"MORNING_SELL_PROFIT_PCT_{mode.upper()}", os.getenv("MORNING_SELL_PROFIT_PCT", "0"))),
         morning_stoploss_enabled=os.getenv(f"MORNING_STOPLOSS_ENABLED_{mode.upper()}", os.getenv("MORNING_STOPLOSS_ENABLED", "false")).lower() == "true",

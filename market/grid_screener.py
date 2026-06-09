@@ -111,7 +111,7 @@ def grid_match(code, creds, token, tol, weeks):
     }
 
 
-def screen(mode="real", tol_pct=0.5, weeks=100, **_ignored):
+def screen(mode="real", tol_pct=0.1, weeks=100, **_ignored):
     """KOSPI+KOSDAQ 전종목 그리드 근접 스크리닝. 결과 dict 반환."""
     tol = float(tol_pct) / 100
     weeks = max(30, min(int(weeks), 120))
@@ -202,7 +202,7 @@ def _compute_grid_levels(code, creds, token, weeks):
             "rsi": rsi([b["close"] for b in bars])[-1], "volume": bars[-1]["volume"]}
 
 
-def build_daily_anchors(mode="real", tol_pct=0.5, weeks=100):
+def build_daily_anchors(mode="real", tol_pct=0.1, weeks=100):
     """08:00 1회 호출: 전종목 작도 → 적격(상승채널+RSI 40~65+거래량≥5만) 종목의
     그리드 레벨을 '오늘 고정'으로 저장한다. 장중엔 이 레벨로 근접만 판정."""
     import datetime as _dt
@@ -263,7 +263,7 @@ def anchors_status(mode="real"):
             "count": len(a.get("stocks", {})), "tol_pct": a.get("tol_pct")}
 
 
-def recommended_candidates(mode="real", tol_pct=0.5, weeks=100, exclude=()):
+def recommended_candidates(mode="real", tol_pct=0.1, weeks=100, exclude=()):
     """08:00 고정 그리드 레벨에 현재가가 근접한 상승채널·지지권(0~2/8) 적격종목을
     매수 후보로 반환. 08:00 작도가 없거나 날짜가 다르면 빈 리스트(매수 안 함)."""
     import datetime as _dt
@@ -302,7 +302,8 @@ def recommended_candidates(mode="real", tol_pct=0.5, weeks=100, exclude=()):
             with lock:
                 cands.append({"code": code, "name": v.get("name", ""), "price": price,
                               "signal_type": f"그리드 {best['label']}",
-                              "signal_detected_at": stamp, "market": "KR"})
+                              "signal_detected_at": stamp, "market": "KR",
+                              "grid_ln": best["ln"], "grid_levels": valid})
         except Exception:
             pass
 

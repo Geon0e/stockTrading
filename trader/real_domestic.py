@@ -401,11 +401,27 @@ def run_grid_buy_cycle(ctx: dict) -> int:
                                     exec_confirmed_at=exec_time)
             _traded_today(ctx).add(code)
             if is_executed:
-                ctx["holdings_cache"][code] = {"qty": quantity, "avg_price": float(exec_price)}
+                # 채널 기반 익절/손절 레벨 계산 (매수 그리드선 기준 N칸 위 익절 / -X% 이탈 손절)
+                buy_ln = cand.get("grid_ln")
+                levels_by_ln = {L["ln"]: L["level"] for L in (cand.get("grid_levels") or [])}
+                buy_level = levels_by_ln.get(buy_ln, price)
+                entry = {"qty": quantity, "avg_price": float(exec_price), "grid_ln": buy_ln}
+                if buy_ln is not None:
+                    tgt_ln = min(buy_ln + config.grid_tp_steps, 8)
+                    tp_level = levels_by_ln.get(tgt_ln)
+                    if tp_level:
+                        entry["tp_level"] = tp_level
+                    if config.grid_sl_pct > 0:
+                        entry["sl_level"] = round(buy_level * (1 - config.grid_sl_pct / 100))
+                ctx["holdings_cache"][code] = entry
                 deduct_daily_budget(ctx, int(float(exec_price) * quantity))
                 if ctx.get("realtime_price"):
                     ctx["realtime_price"].subscribe([code])
-                logger.info(f"[그리드매수] 완료: {label} {quantity}주 @ {exec_price}원 | 잔여 {get_daily_budget(ctx):,}원")
+                logger.info(
+                    f"[그리드매수] 완료: {label} {quantity}주 @ {exec_price}원 | "
+                    f"익절 {entry.get('tp_level', '-')} / 손절 {entry.get('sl_level', '-')} | "
+                    f"잔여 {get_daily_budget(ctx):,}원"
+                )
             else:
                 logger.info(f"[그리드매수] 접수(미체결): {label} | 주문번호 {order_no}")
             bought += 1

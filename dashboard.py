@@ -378,9 +378,9 @@ def api_intraday_chart():
 def api_grid_screen():
     mode = _valid_mode(request.args.get("mode"))
     try:
-        tol = float(request.args.get("tol", 0.5))
+        tol = float(request.args.get("tol", 0.1))
     except (TypeError, ValueError):
-        tol = 0.5
+        tol = 0.1
     try:
         weeks = int(request.args.get("weeks", 100))
     except (TypeError, ValueError):
@@ -645,6 +645,8 @@ def api_get_config():
         "market_regime_rsi_min": float(env.get("MARKET_REGIME_RSI_MIN", "40")),
         "order_type": env.get(f"ORDER_TYPE_{m}", "market"),
         "limit_order_pct": float(env.get(f"LIMIT_ORDER_PCT_{m}", "1.0")),
+        "grid_tp_steps": int(env.get(f"GRID_TP_STEPS_{m}", env.get("GRID_TP_STEPS", "2"))),
+        "grid_sl_pct": float(env.get(f"GRID_SL_PCT_{m}", env.get("GRID_SL_PCT", "2.0"))),
         "buy_source": env.get(f"BUY_SOURCE_{m}", env.get("BUY_SOURCE", "strategy")),
     }
     if mode == "real":
@@ -944,6 +946,16 @@ def api_save_restart():
         _write_env_key(f"LIMIT_ORDER_PCT_{mode.upper()}", str(val))
         if cfg.get("order_type") == "limit":
             changes["지정가 허용폭"] = f"+{val}%"
+
+    if "grid_tp_steps" in cfg:
+        val = max(1, min(int(cfg["grid_tp_steps"]), 8))
+        _write_env_key(f"GRID_TP_STEPS_{mode.upper()}", str(val))
+        changes["그리드 익절"] = f"{val}칸 위"
+
+    if "grid_sl_pct" in cfg:
+        val = float(cfg["grid_sl_pct"])
+        _write_env_key(f"GRID_SL_PCT_{mode.upper()}", str(val))
+        changes["그리드 손절"] = f"-{val}% 이탈" if val > 0 else "비활성"
 
     # ── 전략 저장 ──────────────────────────────────────────────────────────
     if strategy_data:

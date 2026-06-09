@@ -126,6 +126,8 @@ def run_take_profit_cycle(ctx: dict) -> None:
         if holdings_cache:
             candidates = []
             for code, info in list(holdings_cache.items()):
+                if info.get("tp_level") is not None or info.get("sl_level") is not None:
+                    continue  # 그리드 포지션은 채널 청산(run_grid_exit_cycle) 담당
                 avg_price = float(info.get("avg_price") or 0)
                 qty = info["qty"]
                 if avg_price <= 0:
@@ -895,6 +897,8 @@ def run_stop_loss_check(ctx: dict) -> None:
         snapshot = []
         _exclude = set(config.exclude_list)
         for stock_code, info in list(holdings.items()):
+            if info.get("tp_level") is not None or info.get("sl_level") is not None:
+                continue  # 그리드 포지션은 채널 청산(run_grid_exit_cycle) 담당
             if stock_code in _traded_today(ctx):
                 continue
             if stock_code in _exclude:
@@ -994,6 +998,95 @@ def run_stop_loss_check(ctx: dict) -> None:
 
     except Exception as e:
         logger.error(f"손절 체크 오류: {e}", exc_info=True)
+
+
+def run_grid_exit_cycle(ctx: dict) -> None:
+    """그리드 채널 기반 청산 — 매수 시 정한 익절선(N칸 위)/손절선(-X% 이탈)으로 매도.
+
+    그리드 포지션(holdings_cache에 tp_level/sl_level 보유)만 대상. WS 가격 우선, 없으면 REST.
+    """
+    if not is_market_open():
+        return
+    config = ctx["config"]
+    if config.buy_source != "grid":
+        return
+    rtp = ctx.get("realtime_price")
+    ws_prices = rtp.get_prices() if rtp else {}
+    holdings = dict(ctx.get("holdings_cache", {}))
+    if not holdings:
+        return
+    try:
+        token = ctx["token_manager"].get_valid_token()
+        _exclude = set(config.exclude_list)
+        for code, info in list(holdings.items()):
+            tp = info.get("tp_level")
+            sl = info.get("sl_level")
+            if tp is None and sl is None:
+                continue  # 그리드 포지션만
+            if code in _traded_today(ctx) or code in _exclude:
+                continue
+            avg_price = float(info.get("avg_price") or 0)
+            qty = info.get("qty", 0)
+            if avg_price <= 0 or qty <= 0:
+                continue
+
+            ws = ws_prices.get(code)
+            if ws:
+                price = float(ws["price"])
+            else:
+                try:
+                    price = float(ctx["price_client"].fetch_current_price(code, token))
+                except Exception as e:
+                    logger.debug(f"[그리드청산] 현재가 조회 실패 [{code}]: {e}")
+                    continue
+
+            if tp is not None and price >= tp:
+                reason = "그리드익절"
+            elif sl is not None and price <= sl:
+                reason = "그리드손절"
+            else:
+                continue
+
+            name = get_stock_name(code)
+            label = f"{code}({name})" if name else code
+            # 익절은 현재가 살짝 아래, 손절은 현재가 아래로 지정가 (체결 보장)
+            down_pct = 0.3 if reason == "그리드익절" else (config.stop_loss_limit_pct or 1.0)
+            limit_price = OrderClient._round_to_tick(int(price * (1 - down_pct / 100)))
+            lock = ctx.get("order_lock")
+            try:
+                with lock if lock else _null_ctx():
+                    result = ctx["order_client"].sell(code, qty, token, limit_price=limit_price)
+            except Exception as sell_err:
+                logger.warning(f"[그리드청산] 매도 실패 [{code}]: {sell_err} — 당일 재시도 중단")
+                _traded_today(ctx).add(code)
+                try:
+                    if code not in ctx["order_client"].get_holdings(token):
+                        ctx["holdings_cache"].pop(code, None)
+                except Exception:
+                    pass
+                continue
+
+            order_no = result.get("output", {}).get("ODNO", "")
+            exec_info = ctx["order_client"].get_execution(code, order_no, token, side="sell")
+            exec_price_str = exec_info["exec_price"] if exec_info else str(limit_price)
+            exec_time = exec_info["exec_time"] if exec_info else ""
+            exec_price_f = float(exec_price_str)
+            profit_pct = round((exec_price_f - avg_price) / avg_price * 100, 2)
+            ctx["trade_logger"].log("SELL", code, qty, result, signal_type=reason,
+                                    exec_price=exec_price_str, exec_confirmed_at=exec_time,
+                                    profit_rate=profit_pct)
+            _traded_today(ctx).add(code)
+            ctx["holdings_cache"].pop(code, None)
+            if rtp:
+                rtp.unsubscribe([code])
+            add_daily_budget(ctx, int(exec_price_f * qty),
+                             profit_amount=int((exec_price_f - avg_price) * qty))
+            _notify_sell(ctx, code, qty, price, signal_type=reason)
+            logger.info(f"[그리드청산] {reason}: {label} {qty}주 @ {exec_price_str}원 | "
+                        f"수익률 {profit_pct:+.2f}% (익절 {tp} / 손절 {sl})")
+            _flush_holdings_snapshot(ctx)
+    except Exception as e:
+        logger.error(f"[그리드청산] 오류: {e}", exc_info=True)
 
 
 def run_domestic_cycle(ctx: dict) -> None:
@@ -1367,6 +1460,8 @@ def main() -> None:
 
         _start_monitor("그리드매수", _grid_buy_tick, _grid_interval)
         logger.info(f"[그리드매수] 빠른 매수 모니터 활성화: {_grid_interval}초 주기 (08:00 적격종목 현재가 체크)")
+        _start_monitor("그리드청산", run_grid_exit_cycle, monitor_interval)
+        logger.info(f"[그리드청산] 채널 익절(+{config.grid_tp_steps}칸)/손절(-{config.grid_sl_pct}%) 모니터 활성화 | {monitor_interval}초 주기")
 
     def _on_signal(signum, frame):
         logger.info("종료 신호 수신 — 모니터링 스레드 정리 중...")
