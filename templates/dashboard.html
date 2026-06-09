@@ -518,7 +518,27 @@ code { color: #60a5fa; font-size: 11px; }
           <span id="settingsModeBadge" class="cfg-mode-badge mock">MOCK</span>
         </div>
 
-        <div style="margin-top:10px">
+        <!-- 매수 종목 선정 (최상단) — 선택에 따라 하위 설정 표시/숨김 -->
+        <div style="margin-top:10px;border:1px solid #14293d;border-radius:6px;padding:8px 10px;background:#0b1220">
+          <div style="font-size:10px;color:#60a5fa;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">매수 종목 선정</div>
+          <div class="cfg-row" style="gap:8px;flex-wrap:wrap">
+            <select id="cfgBuySource" class="cfg-select" style="font-size:12px;padding:4px 7px" onchange="applyBuySourceVisibility()">
+              <option value="strategy">설정 전략 (골든크로스 등)</option>
+              <option value="grid">그리드 스크리닝 ⭐추천</option>
+            </select>
+            <span class="cfg-hint">그리드: 08:00 주봉 작도 고정 → 장중 현재가로 상승빗각 지지권 근접 매수</span>
+          </div>
+          <div class="cfg-row cfg-grid-only" style="gap:6px;flex-wrap:wrap;margin-top:8px">
+            <span class="cfg-hint">채널 익절</span>
+            <input type="number" id="cfgGridTpSteps" class="cfg-input" style="width:50px" min="1" max="8" step="1" placeholder="2">
+            <span class="cfg-hint">칸 위 도달 시 매도</span>
+            <span class="cfg-hint" style="margin-left:10px">채널 손절</span>
+            <input type="number" id="cfgGridSlPct" class="cfg-input" style="width:55px" min="0" step="0.1" placeholder="2.0">
+            <span class="cfg-hint">% (매수 지지선 아래 이탈, 0=끄기)</span>
+          </div>
+        </div>
+
+        <div class="cfg-strategy-only" style="margin-top:10px">
           <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">스캔 주기 <span style="font-weight:normal;text-transform:none;color:#666;font-size:10px">시간대별 자동 조정 (0 = 비활성)</span></div>
           <div class="cfg-row" style="flex-wrap:wrap;gap:6px 12px">
             <span style="font-size:11px;color:#60a5fa;white-space:nowrap">초반 09~10시</span>
@@ -564,7 +584,7 @@ code { color: #60a5fa; font-size: 11px; }
           <span class="cfg-hint" id="cfgOrderQtyHint">주 (0=무제한)</span>
         </div>
 
-        <div style="margin-top:10px;border:1px solid #1a1a2e;border-radius:6px;padding:8px 10px;background:#0d0d1a">
+        <div class="cfg-strategy-only" style="margin-top:10px;border:1px solid #1a1a2e;border-radius:6px;padding:8px 10px;background:#0d0d1a">
           <div style="font-size:10px;color:#a78bfa;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">물타기 <span style="font-weight:normal;text-transform:none;color:#888;font-size:10px">손실 보유 종목 추가매수</span></div>
           <div class="cfg-row" style="gap:6px;flex-wrap:wrap;margin-bottom:6px">
             <span style="font-size:11px;color:#888">1차 기준</span>
@@ -594,7 +614,7 @@ code { color: #60a5fa; font-size: 11px; }
           </div>
         </div>
 
-        <div style="margin-top:10px;border:1px solid #1a2e1a;border-radius:6px;padding:8px 10px;background:#0d1a0d">
+        <div class="cfg-strategy-only" style="margin-top:10px;border:1px solid #1a2e1a;border-radius:6px;padding:8px 10px;background:#0d1a0d">
           <div style="font-size:10px;color:#4ade80;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">불타기 <span style="font-weight:normal;text-transform:none;color:#888;font-size:10px">수익 보유 종목 추가매수 (1차기준 0=비활성)</span></div>
           <div class="cfg-row" style="gap:6px;flex-wrap:wrap;margin-bottom:6px">
             <span style="font-size:11px;color:#888">1차 기준</span>
@@ -620,7 +640,7 @@ code { color: #60a5fa; font-size: 11px; }
           </div>
         </div>
 
-        <div style="margin-top:10px;border:1px solid #2a1a1a;border-radius:6px;padding:8px 10px;background:#160b0b">
+        <div class="cfg-strategy-only" style="margin-top:10px;border:1px solid #2a1a1a;border-radius:6px;padding:8px 10px;background:#160b0b">
           <div style="font-size:10px;color:#ef4444;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">시장 국면 필터 <span style="font-weight:normal;text-transform:none;color:#888;font-size:10px">하락장·RSI 과매도 시 매수 자동 차단</span></div>
           <div class="cfg-row" style="gap:8px;flex-wrap:wrap">
             <label class="cfg-toggle"><input type="checkbox" id="cfgRegimeEnabled"><span></span></label>
@@ -641,26 +661,7 @@ code { color: #60a5fa; font-size: 11px; }
           </div>
         </div>
 
-        <div style="margin-top:10px;border:1px solid #14293d;border-radius:6px;padding:8px 10px;background:#0b1220">
-          <div style="font-size:10px;color:#60a5fa;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">매수 종목 선정</div>
-          <div class="cfg-row" style="gap:8px;flex-wrap:wrap">
-            <select id="cfgBuySource" class="cfg-select" style="font-size:12px;padding:4px 7px">
-              <option value="strategy">설정 전략 (골든크로스 등)</option>
-              <option value="grid">그리드 스크리닝 ⭐추천</option>
-            </select>
-            <span class="cfg-hint">그리드: 08:00 주봉 작도 고정 → 장중 현재가로 상승빗각 지지권 근접 매수</span>
-          </div>
-          <div class="cfg-row" style="gap:6px;flex-wrap:wrap;margin-top:8px">
-            <span class="cfg-hint">채널 익절</span>
-            <input type="number" id="cfgGridTpSteps" class="cfg-input" style="width:50px" min="1" max="8" step="1" placeholder="2">
-            <span class="cfg-hint">칸 위 도달 시 매도</span>
-            <span class="cfg-hint" style="margin-left:10px">채널 손절</span>
-            <input type="number" id="cfgGridSlPct" class="cfg-input" style="width:55px" min="0" step="0.1" placeholder="2.0">
-            <span class="cfg-hint">% (매수 지지선 아래 이탈, 0=끄기)</span>
-          </div>
-        </div>
-
-        <div style="margin-top:10px">
+        <div class="cfg-strategy-only" style="margin-top:10px">
           <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">스캔 범위</div>
           <div class="cfg-row">
             <label class="cfg-toggle"><input type="checkbox" id="cfgScanAll"><span></span></label>
@@ -692,7 +693,7 @@ code { color: #60a5fa; font-size: 11px; }
           </div>
         </div>
 
-        <div style="margin-top:10px">
+        <div class="cfg-strategy-only" style="margin-top:10px">
           <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">익절 / 손절 <span style="font-weight:normal;text-transform:none;color:#333">0 = 비활성화</span></div>
           <div class="cfg-row">
             <span style="font-size:11px;color:#4ade80;width:28px">익절</span>
@@ -734,7 +735,7 @@ code { color: #60a5fa; font-size: 11px; }
           </div>
         </div>
 
-        <div style="margin-top:10px">
+        <div class="cfg-strategy-only" style="margin-top:10px">
           <div style="font-size:10px;color:#555;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">스캔 종목 <span style="color:#333;font-weight:normal;text-transform:none">(비워두면 자동 스캔)</span></div>
           <textarea id="cfgWatchlist" rows="2"
             style="width:100%;background:#1a1a1a;border:1px solid #333;border-radius:4px;
@@ -752,8 +753,9 @@ code { color: #60a5fa; font-size: 11px; }
 
       </div>
 
-      <!-- 전략 조건 -->
+      <!-- 전략 조건 (설정 전략 모드 전용) -->
       <div class="cfg-section">
+       <div class="cfg-strategy-only" style="display:flex;flex-direction:column;gap:10px">
         <div class="cfg-title" style="display:flex;align-items:center;gap:8px">
           <span>전략 조건</span>
           <span id="strategyModeBadge" class="cfg-mode-badge mock">MOCK</span>
@@ -908,6 +910,7 @@ code { color: #60a5fa; font-size: 11px; }
           </span>
         </div>
 
+       </div>
         <div style="margin-top:16px;display:flex;gap:8px;align-items:center;padding-top:12px;border-top:1px solid #1e1e1e">
           <button class="cfg-save" id="btnSaveRestart" style="padding:7px 20px;font-size:13px" onclick="saveAndRestart()">💾 저장 후 재시작</button>
           <div class="cfg-msg" id="settingsMsg"></div>
@@ -1559,7 +1562,16 @@ function loadSettings() {
     document.getElementById('cfgBuySource').value = d.buy_source || 'strategy';
     document.getElementById('cfgGridTpSteps').value = d.grid_tp_steps ?? 2;
     document.getElementById('cfgGridSlPct').value = d.grid_sl_pct ?? 2.0;
+    applyBuySourceVisibility();
   }).catch(() => {});
+}
+
+// 매수 종목 선정에 따라 하위 설정 표시/숨김:
+//  그리드 → 채널 익절/손절만, 설정 전략 → 물타기·불타기·시장국면·익절손절·장초익절·10:30손절·스캔·전략조건
+function applyBuySourceVisibility() {
+  const grid = document.getElementById('cfgBuySource').value === 'grid';
+  document.querySelectorAll('.cfg-strategy-only').forEach(el => { el.style.display = grid ? 'none' : ''; });
+  document.querySelectorAll('.cfg-grid-only').forEach(el => { el.style.display = grid ? '' : 'none'; });
 }
 
 
@@ -2008,7 +2020,9 @@ function levelColor(price, level) {
 
 function renderScreener(d) {
   screenerResults = d.results || [];
-  screenerResults.sort((a, b) => (b.volume || 0) - (a.volume || 0));  // 거래량 높은 순
+  screenerResults.sort((a, b) =>
+    (b.recommended ? 1 : 0) - (a.recommended ? 1 : 0)   // ⭐추천 먼저
+    || (b.volume || 0) - (a.volume || 0));              // 그 다음 거래량 많은 순
   const body = document.getElementById('scrBody');
   body.innerHTML = '';
   screenerResults.forEach(x => {
