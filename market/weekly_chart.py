@@ -9,7 +9,10 @@
 정상 import되는 `market` 패키지에 둔다.
 """
 import os
+import time
+import calendar
 import datetime
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import requests
@@ -21,11 +24,22 @@ _CHART_ENDPOINT = "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartpri
 _CHART_TR_ID = "FHKST03010100"  # 모의/실제 공통 (기간별 시세, 호출당 최대 ~100행)
 _INFO_ENDPOINT = "/uapi/domestic-stock/v1/quotations/search-stock-info"
 _INFO_TR_ID = "CTPF1604R"
+_MINUTE_ENDPOINT = "/uapi/domestic-stock/v1/quotations/inquire-time-dailychartprice"
+_MINUTE_TR_ID = "FHKST03010230"  # 일별 분봉 (호출당 ~120행, 종료시각 이전으로 페이지네이션)
 
 _MODE_BASE = {
     "mock": "https://openapivts.koreainvestment.com:29443",
     "real": "https://openapi.koreainvestment.com:9443",
 }
+
+# 작도선은 절대 고/저가에 매달려 새 봉마다 흔들리므로, 한 번 잡은 앵커를
+# 프로세스 메모리에 고정해두고 극값이 이 비율을 넘게 갱신될 때만 다시 잡는다.
+_PIN_THRESHOLD = 0.01  # 1%
+_PINNED: dict[str, dict] = {}
+
+
+def _pin_key(mode: str, code: str, weeks: int) -> str:
+    return f"{mode}:{code}:{weeks}"
 
 
 def _creds(mode: str):
@@ -269,8 +283,34 @@ def _series(bars: list[dict]) -> dict:
     }
 
 
-def build_chart(code: str, weeks: int = 100, mode: str = "real") -> dict:
-    """주봉+일봉 + 주봉 기준 작도선(앵커)을 일괄 생성."""
+def _anchor_lines(weekly_bars: list[dict], draw_lines: list[dict]) -> list[dict]:
+    """compute_drawing의 (시작 인덱스·기울기) 선을 (날짜, 가격) 두 앵커로 변환.
+
+    앵커는 주봉 시작점과 주봉 마지막점. 프론트엔드가 두 앵커를 임의 타임프레임의
+    봉 인덱스에 매핑해 직선을 다시 그린다.
+    """
+    n = len(weekly_bars)
+    lines = []
+    for l in draw_lines:
+        si = l["start_i"]
+        ei = n - 1
+        lines.append({
+            "label": l["label"], "color": l["color"], "dash": l["dash"],
+            "group": l.get("group", "draw"),
+            "a": {"time": _iso(weekly_bars[si]["date"]), "value": round(l["start_val"])},
+            "b": {"time": _iso(weekly_bars[ei]["date"]),
+                  "value": round(l["start_val"] + l["slope"] * (ei - si))},
+        })
+    return lines
+
+
+def build_chart(code: str, weeks: int = 100, mode: str = "real", refresh: bool = False) -> dict:
+    """주봉+일봉 + 주봉 기준 작도선(앵커)을 일괄 생성.
+
+    작도선·피보나치는 절대 고/저가에 매달려 새 봉마다 흔들리므로, 한 번 잡은
+    앵커를 프로세스 메모리(_PINNED)에 고정해두고 새 극값이 _PIN_THRESHOLD를
+    넘게 갱신될 때만 다시 계산한다. refresh=True면 무조건 다시 잡는다.
+    """
     if not (code and code.isdigit() and len(code) == 6):
         raise ValueError("종목코드는 6자리 숫자여야 합니다")
     weeks = max(20, min(int(weeks), 120))
@@ -284,22 +324,29 @@ def build_chart(code: str, weeks: int = 100, mode: str = "real") -> dict:
         raise RuntimeError("주봉 데이터를 찾을 수 없습니다 (종목코드 확인)")
     daily_bars = _fetch_candles(code, days, "D", creds, token)
 
-    draw = compute_drawing(weekly_bars)
+    period_high = max(b["high"] for b in weekly_bars)
+    period_low = min(b["low"] for b in weekly_bars)
+    week_first = _iso(weekly_bars[0]["date"])
 
-    # 작도선을 (날짜, 가격) 두 앵커로 변환 — 주봉 시작점과 주봉 마지막점.
-    n = len(weekly_bars)
-    lines = []
-    for l in draw["lines"]:
-        si = l["start_i"]
-        ei = n - 1
-        a_date = _iso(weekly_bars[si]["date"])
-        b_date = _iso(weekly_bars[ei]["date"])
-        a_val = round(l["start_val"])
-        b_val = round(l["start_val"] + l["slope"] * (ei - si))
-        lines.append({"label": l["label"], "color": l["color"], "dash": l["dash"],
-                      "group": l.get("group", "draw"),
-                      "a": {"time": a_date, "value": a_val},
-                      "b": {"time": b_date, "value": b_val}})
+    # ── 작도 기준점 고정 ──
+    # 캐시된 앵커가 (1) 현재 조회 창 안에 있고 (2) 극값이 임계 이내면 그대로 재사용.
+    key = _pin_key(mode, code, weeks)
+    pin = None if refresh else _PINNED.get(key)
+    reuse = bool(pin
+                 and pin["minAnchor"] >= week_first
+                 and period_high <= pin["anchorHigh"] * (1 + _PIN_THRESHOLD)
+                 and period_low >= pin["anchorLow"] * (1 - _PIN_THRESHOLD))
+    if reuse:
+        lines, fib = pin["lines"], pin["fib"]
+    else:
+        draw = compute_drawing(weekly_bars)
+        lines = _anchor_lines(weekly_bars, draw["lines"])
+        fib = draw["fib"]
+        _PINNED[key] = {
+            "anchorHigh": period_high, "anchorLow": period_low,
+            "minAnchor": min((l["a"]["time"] for l in lines), default=week_first),
+            "lines": lines, "fib": fib,
+        }
 
     weekly = _series(weekly_bars)
     daily = _series(daily_bars) if daily_bars else None
@@ -311,7 +358,147 @@ def build_chart(code: str, weeks: int = 100, mode: str = "real") -> dict:
         "weekly": weekly,
         "daily": daily,
         "lines": lines,
-        "fib": draw["fib"],
-        "periodHigh": max(b["high"] for b in weekly_bars),
-        "periodLow": min(b["low"] for b in weekly_bars),
+        "fib": fib,
+        "pinned": reuse,
+        "periodHigh": period_high,
+        "periodLow": period_low,
+    }
+
+
+# ── 분봉(1시간봉) ──────────────────────────────────────────────────────────
+# KIS는 시간봉을 직접 주지 않으므로 일별 분봉(1분)을 받아 시간 단위로 합친다.
+# 차트(lightweight-charts) 인트라데이 시계열은 유닉스 타임스탬프(초)를 쓴다.
+# KST 시각을 그대로 보여주려고 KST 시계를 UTC인 것처럼 timegm으로 변환한다.
+
+def _kst_ts(yyyymmdd: str, hour: int) -> int:
+    y, m, d = int(yyyymmdd[:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:8])
+    return calendar.timegm((y, m, d, hour, 0, 0, 0, 0, 0))
+
+
+def _fetch_day_minutes(code: str, yyyymmdd: str, creds, token: str) -> list[dict]:
+    """하루치 1분봉을 오래된→최신 순으로 반환 (장중 09:00~15:30, 종료시각 이전으로 페이지네이션)."""
+    url = f"{creds.base_url}{_MINUTE_ENDPOINT}"
+    acc: dict[str, dict] = {}
+    end_hour = "153000"
+    for _ in range(8):  # 하루 ~390분 / 120행 → 4~5콜 + 여유
+        params = {
+            "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code,
+            "FID_INPUT_HOUR_1": end_hour, "FID_INPUT_DATE_1": yyyymmdd,
+            "FID_PW_DATA_INCU_YN": "N", "FID_FAKE_TICK_INCU_YN": "N",
+        }
+        rows = None
+        for attempt in range(4):  # 초당 거래건수 초과/일시 오류 재시도 (조기 종료로 봉 누락 방지)
+            resp = requests.get(url, headers=_headers(creds, token, _MINUTE_TR_ID), params=params, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("rt_cd") == "0":
+                    rows = data.get("output2") or []
+                    break
+            time.sleep(0.3 * (attempt + 1))
+        if rows is None:
+            break  # 재시도 후에도 실패 → 종료
+        if not rows:
+            break  # 더 이상 데이터 없음
+        new = 0
+        for row in rows:
+            h = row.get("stck_cntg_hour")
+            c = row.get("stck_prpr")
+            if not h or not c or c == "0":
+                continue
+            if h not in acc:
+                acc[h] = {
+                    "hour": h,
+                    "open": int(row["stck_oprc"]), "high": int(row["stck_hgpr"]),
+                    "low": int(row["stck_lwpr"]), "close": int(c),
+                    "volume": int(row.get("cntg_vol") or 0),
+                }
+                new += 1
+        oldest = min(acc)  # HHMMSS 문자열 = 시간순
+        if new == 0 or oldest <= "090000":
+            break
+        t = int(oldest[:2]) * 60 + int(oldest[2:4]) - 1  # 다음 페이지: 1분 전
+        if t < 9 * 60:
+            break
+        end_hour = f"{t // 60:02d}{t % 60:02d}00"
+        time.sleep(0.05)  # rate limit 여유
+    return [acc[h] for h in sorted(acc)]
+
+
+def _bucket_hour(hhmmss: str, interval_min: int) -> int:
+    """분봉의 체결시각 → 봉이 속한 시간버킷의 시(hour).
+
+    1시간봉: 시각의 시 그대로. 4시간봉: 국내장 6.5h를 09:00~13:00 / 13:00~15:30 두 봉으로.
+    """
+    if interval_min >= 240:
+        return 9 if hhmmss < "130000" else 13
+    return int(hhmmss[:2])
+
+
+def _aggregate(yyyymmdd: str, minutes: list[dict], interval_min: int) -> list[dict]:
+    """1분봉 → interval봉 (버킷; open=첫분, close=막분, high/low=구간, vol=합)."""
+    buckets: dict[int, dict] = {}
+    for m in minutes:  # 오래된→최신 순
+        h = _bucket_hour(m["hour"], interval_min)
+        b = buckets.get(h)
+        if b is None:
+            buckets[h] = {k: m[k] for k in ("open", "high", "low", "close", "volume")}
+        else:
+            b["high"] = max(b["high"], m["high"])
+            b["low"] = min(b["low"], m["low"])
+            b["close"] = m["close"]
+            b["volume"] += m["volume"]
+    return [{"ts": _kst_ts(yyyymmdd, h), **buckets[h]} for h in sorted(buckets)]
+
+
+def _series_intraday(bars: list[dict]) -> dict:
+    closes = [b["close"] for b in bars]
+    rsis = rsi(closes)
+    candles = [{"time": b["ts"], "open": b["open"], "high": b["high"],
+                "low": b["low"], "close": b["close"]} for b in bars]
+    volumes = [{"time": b["ts"], "value": b["volume"],
+                "color": "#ef444455" if b["close"] >= b["open"] else "#3b82f655"} for b in bars]
+    rsi_series = [({"time": bars[i]["ts"], "value": rsis[i]} if rsis[i] is not None
+                   else {"time": bars[i]["ts"]}) for i in range(len(bars))]
+    return {
+        "candles": candles, "volumes": volumes, "rsi": rsi_series,
+        "count": len(bars),
+        "lastClose": bars[-1]["close"] if bars else None,
+        "lastRsi": rsis[-1] if rsis else None,
+    }
+
+
+def build_intraday(code: str, mode: str = "real", days: int = 7, interval_min: int = 60) -> dict:
+    """최근 `days` 거래일의 시간봉(1h/4h) 시계열. (작도선은 build_chart 응답을 재사용)"""
+    if not (code and code.isdigit() and len(code) == 6):
+        raise ValueError("종목코드는 6자리 숫자여야 합니다")
+    days = max(1, min(int(days), 40))
+    interval_min = 240 if int(interval_min) >= 240 else 60
+
+    creds = _creds(mode)
+    token = TokenManager(creds).get_valid_token()
+
+    today = datetime.date.today()
+    cand, d = [], today
+    while len(cand) < days + 4 and (today - d).days < days * 2 + 14:
+        if d.weekday() < 5:  # 주말 제외 (공휴일은 빈 응답으로 자연 제외)
+            cand.append(d.strftime("%Y%m%d"))
+        d -= datetime.timedelta(days=1)
+
+    def fetch(ds):
+        return ds, _aggregate(ds, _fetch_day_minutes(code, ds, creds, token), interval_min)
+
+    with ThreadPoolExecutor(max_workers=4) as ex:  # KIS 초당 한도 고려
+        results = list(ex.map(fetch, cand))
+
+    have = sorted([(ds, bars) for ds, bars in results if bars], key=lambda x: x[0])[-days:]
+    bars = sorted((b for _, bars in have for b in bars), key=lambda b: b["ts"])
+    if not bars:
+        raise RuntimeError("시간봉 데이터를 찾을 수 없습니다 (장 시작 전이거나 거래 없음)")
+
+    return {
+        "code": code, "mode": mode,
+        "name": fetch_name(code, creds, token),
+        "hourly": _series_intraday(bars),
+        "days": len(have),
+        "interval": interval_min,
     }

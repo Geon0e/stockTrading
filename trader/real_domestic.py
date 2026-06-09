@@ -313,3 +313,104 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
         logger.info(f"[실전] 골든크로스 종목 없음 | 보유: {len(holdings)}개")
 
     return bought
+
+
+def run_grid_buy_cycle(ctx: dict) -> int:
+    """그리드 전용 빠른 매수 모니터 (짧은 주기로 반복 호출).
+
+    08:00에 고정한 작도(적격종목 그리드 레벨)에 현재가가 상승빗각 지지권으로 근접한
+    종목을 즉시 매수한다. 보유/당일거래/예산/포지션 가드 + order_lock으로 중복·경쟁 방지.
+    반환: 이번 호출에서 매수한 종목 수.
+    """
+    config = ctx["config"]
+    if config.buy_source != "grid":
+        return 0
+
+    holdings = ctx.get("holdings_cache", {})
+    capacity = config.max_positions - len(holdings)
+    if capacity <= 0:
+        return 0
+    remaining = get_daily_budget(ctx)
+    if remaining <= 0:
+        return 0
+    budget = config.real_budget if config.mode == "real" else config.mock_budget
+    per_position = min(budget // config.max_positions, remaining)
+
+    from market.grid_screener import recommended_candidates
+    cands = recommended_candidates(mode=config.mode, exclude=config.exclude_list)
+    if not cands:
+        return 0
+
+    token = ctx["token_manager"].get_valid_token()
+    lock = ctx.get("order_lock")
+    bought = 0
+
+    for cand in cands:
+        if bought >= capacity:
+            break
+        code = cand["code"]
+        price = int(cand["price"])
+        if code in _traded_today(ctx) or code in holdings:
+            continue
+        if price > per_position:
+            continue
+
+        if lock:
+            lock.acquire()
+        try:
+            # 락 안에서 재확인 (다른 스레드와 중복 매수·예산 경쟁 방지)
+            if code in _traded_today(ctx) or code in ctx.get("holdings_cache", {}):
+                continue
+            available = min(per_position, get_daily_budget(ctx))
+            quantity = available // price
+            if config.order_quantity > 0:
+                quantity = min(quantity, config.order_quantity)
+            if quantity < 1:
+                continue
+
+            signal_type = cand.get("signal_type", "그리드")
+            signal_time = cand.get("signal_detected_at", datetime.datetime.now().isoformat())
+            name = get_stock_name(code)
+            label = f"{code}({name})" if name else code
+
+            limit_price = None
+            if config.order_type == "limit":
+                limit_price = round(price * (1 + config.limit_order_pct / 100))
+            logger.info(
+                f"[그리드매수] {label} | {signal_type} | 신호가 {price:,}원 → "
+                f"{f'지정가 {limit_price:,}원' if limit_price else '시장가'} × {quantity}주"
+            )
+            if _tg(ctx):
+                tg_notify_signal(_tg(ctx), code, price, signal_type)
+
+            result = ctx["order_client"].buy(code, quantity, token, limit_price=limit_price)
+            order_no = result.get("output", {}).get("ODNO", "")
+            if _tg(ctx):
+                tg_notify_order_placed(_tg(ctx), code, quantity, limit_price or price, order_no)
+
+            exec_info = ctx["order_client"].get_execution(code, order_no, token)
+            exec_price = exec_info["exec_price"] if exec_info else str(limit_price or price)
+            exec_time = exec_info["exec_time"] if exec_info else ""
+            is_executed = exec_info is not None
+
+            if _tg(ctx):
+                tg_notify_buy(_tg(ctx), code, quantity, limit_price or price,
+                              signal_type=signal_type, signal_time=signal_time, exec_price=exec_price)
+            ctx["trade_logger"].log("BUY", code, quantity, result, signal_type=signal_type,
+                                    signal_detected_at=signal_time, exec_price=exec_price,
+                                    exec_confirmed_at=exec_time)
+            _traded_today(ctx).add(code)
+            if is_executed:
+                ctx["holdings_cache"][code] = {"qty": quantity, "avg_price": float(exec_price)}
+                deduct_daily_budget(ctx, int(float(exec_price) * quantity))
+                if ctx.get("realtime_price"):
+                    ctx["realtime_price"].subscribe([code])
+                logger.info(f"[그리드매수] 완료: {label} {quantity}주 @ {exec_price}원 | 잔여 {get_daily_budget(ctx):,}원")
+            else:
+                logger.info(f"[그리드매수] 접수(미체결): {label} | 주문번호 {order_no}")
+            bought += 1
+        finally:
+            if lock and lock.locked():
+                lock.release()
+
+    return bought

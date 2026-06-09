@@ -14,7 +14,7 @@ from strategy.configurable_strategy import ConfigurableStrategy
 from strategy.strategy_loader import load_strategy_config
 from screener.stock_screener import StockScreener
 from audit.trade_logger import TradeLogger
-from trader.real_domestic import run_real_domestic_cycle
+from trader.real_domestic import run_real_domestic_cycle, run_grid_buy_cycle
 from trader.matagi import check_matagi_conditions
 from trader.bultagi import check_bultagi_conditions
 from trader.real_nasdaq import run_real_nasdaq_cycle
@@ -1006,9 +1006,11 @@ def run_domestic_cycle(ctx: dict) -> None:
     run_morning_sell_cycle(ctx)
 
     today = datetime.date.today()
-    skip_buy = (ctx.get("domestic_buy_date") == today)
+    # 그리드 매수는 별도 빠른 모니터(run_grid_buy_cycle)가 담당 → 스케줄 사이클은 매도 체크만
+    skip_buy = (ctx.get("domestic_buy_date") == today) or (ctx["config"].buy_source == "grid")
     if skip_buy:
-        logger.info("오늘 이미 매수 완료 — 매수 단계 건너뜀 (매도 체크만 실행)")
+        logger.info("매수 단계 건너뜀 (매도 체크만 실행)"
+                    + (" — 그리드 매수는 모니터 담당" if ctx["config"].buy_source == "grid" else ""))
     try:
         token = ctx["token_manager"].get_valid_token()
         if ctx["config"].mode == "real":
@@ -1219,20 +1221,34 @@ def main() -> None:
             ctx["realtime_price"], stop_event, lambda: set(ctx["holdings_cache"].keys())
         )
 
-    # BUY_SOURCE=grid: 그리드 추천 후보 캐시 예열 (첫 매수 사이클 타임아웃 방지)
+    # BUY_SOURCE=grid: 08:00 1회 작도 → 장중 가격 체크 방식
     if config.buy_source == "grid":
-        logger.info("[그리드매수] BUY_SOURCE=grid — 그리드 스크리닝 ⭐추천 종목으로 매수")
+        logger.info("[그리드매수] BUY_SOURCE=grid — 08:00 주봉 작도 고정 후 장중 현재가로 상승빗각 근접 매수")
 
-        def _warm_grid():
+        def _build_anchors(reason=""):
             try:
-                from market.grid_screener import recommended_candidates
-                logger.info("[그리드매수] 추천 후보 캐시 예열 중 (전종목 스캔, 수 분 소요)...")
-                n = len(recommended_candidates(mode=config.mode, exclude=config.exclude_list))
-                logger.info(f"[그리드매수] 예열 완료 — 추천 {n}개 캐시")
+                from market.grid_screener import build_daily_anchors
+                logger.info(f"[그리드작도] 전종목 주봉 그리드 작도 중{reason} (수 분 소요)...")
+                r = build_daily_anchors(mode=config.mode)
+                if r.get("ok"):
+                    logger.info(f"[그리드작도] 완료 — 적격 {r['count']}개 / 스캔 {r['scanned']}개 ({r['date']} 고정)")
+                else:
+                    logger.warning(f"[그리드작도] 실패: {r.get('error')}")
             except Exception as e:
-                logger.warning(f"[그리드매수] 예열 실패: {e}")
+                logger.warning(f"[그리드작도] 오류: {e}")
 
-        threading.Thread(target=_warm_grid, daemon=True, name="grid-warmup").start()
+        # 시작 시 오늘 작도가 없으면 즉시 1회 빌드 (백그라운드)
+        from market.grid_screener import anchors_status
+        if not anchors_status(config.mode).get("ready"):
+            threading.Thread(target=_build_anchors, kwargs={"reason": " (시작 시)"},
+                             daemon=True, name="grid-anchors-init").start()
+        else:
+            logger.info("[그리드작도] 오늘 작도 이미 존재 — 재사용")
+        # 매일 08:00 작도 갱신
+        schedule.every().day.at("08:00").do(
+            lambda: threading.Thread(target=_build_anchors, kwargs={"reason": " (08:00 정기)"},
+                                     daemon=True, name="grid-anchors-0800").start()
+        )
 
     # real 모드: 봇 시작 시 KIS API 체결 내역으로 당일 예산 현황 초기화
     if config.mode == "real":
@@ -1245,17 +1261,23 @@ def main() -> None:
         # holdings_cache 초기화 — 예산 초기화 실패와 독립적으로 항상 실행
         try:
             _init_holdings = ctx["order_client"].get_holdings(_init_token)
+            _excl = set(config.exclude_list)
+            # 제외 종목·비정상 코드(6자리 숫자 아님)는 캐시에서 거른다 → 봇이 손절/매도 관리하지 않음
             ctx["holdings_cache"] = {
                 code: {"qty": info["qty"], "avg_price": float(info.get("avg_price") or 0)}
                 for code, info in _init_holdings.items()
+                if code and code.isdigit() and len(code) == 6 and code not in _excl
             }
+            _skipped = len(_init_holdings) - len(ctx["holdings_cache"])
             ctx["matagi_count"] = _init_matagi_count(config.mode)
             if ctx["matagi_count"]:
                 logger.info(f"[물타기] 오늘 물타기 횟수 복원: {ctx['matagi_count']}")
-            logger.info(f"[캐시] 보유 종목 {len(_init_holdings)}개 초기화")
-            if ctx["realtime_price"] and _init_holdings:
-                ctx["realtime_price"].subscribe(list(_init_holdings.keys()))
-                logger.info(f"[실시간] 보유 {len(_init_holdings)}개 종목 구독 시작")
+            logger.info(f"[캐시] 보유 종목 {len(ctx['holdings_cache'])}개 초기화"
+                        + (f" (제외/비정상 {_skipped}개 제외)" if _skipped else ""))
+            if ctx["realtime_price"] and ctx["holdings_cache"]:
+                _codes = list(ctx["holdings_cache"].keys())
+                ctx["realtime_price"].subscribe(_codes)
+                logger.info(f"[실시간] 보유 {len(_codes)}개 종목 구독 시작")
         except Exception as e:
             logger.warning(f"[캐시] 보유 종목 초기화 실패 — 모니터링 비활성: {e}")
 
@@ -1331,6 +1353,20 @@ def main() -> None:
             f"불타기 모니터링 활성화: +{config.bultagi_profit_pct}% 기준 | "
             f"최대 {config.bultagi_max_count}회 | {config.bultagi_interval_minutes}분 주기"
         )
+
+    # 그리드 매수: 08:00 고정 작도에 현재가 근접 시 즉시 매수하는 빠른 모니터
+    if config.buy_source == "grid":
+        _grid_interval = max(1, int(os.getenv(f"GRID_BUY_INTERVAL_SECONDS_{config.mode.upper()}",
+                                               os.getenv("GRID_BUY_INTERVAL_SECONDS", "1"))))
+
+        def _grid_buy_tick(c):
+            if not is_market_open():
+                return
+            if run_grid_buy_cycle(c):
+                _flush_holdings_snapshot(c)
+
+        _start_monitor("그리드매수", _grid_buy_tick, _grid_interval)
+        logger.info(f"[그리드매수] 빠른 매수 모니터 활성화: {_grid_interval}초 주기 (08:00 적격종목 현재가 체크)")
 
     def _on_signal(signum, frame):
         logger.info("종료 신호 수신 — 모니터링 스레드 정리 중...")

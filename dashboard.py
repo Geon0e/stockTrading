@@ -13,7 +13,7 @@ from pathlib import Path
 
 from flask import Flask, Response, jsonify, redirect, render_template, request, session, stream_with_context
 
-from market.weekly_chart import build_chart
+from market.weekly_chart import build_chart, build_intraday
 from market.grid_screener import screen as grid_screen
 
 app = Flask(__name__)
@@ -341,8 +341,9 @@ def api_weekly_chart():
         weeks = int(request.args.get("weeks", 100))
     except (TypeError, ValueError):
         weeks = 100
+    refresh = request.args.get("refresh") in ("1", "true", "yes")
     try:
-        data = build_chart(code, weeks, mode)
+        data = build_chart(code, weeks, mode, refresh=refresh)
         return jsonify({"ok": True, **data})
     except (ValueError, RuntimeError) as e:
         return jsonify({"ok": False, "error": str(e)}), 400
@@ -351,13 +352,35 @@ def api_weekly_chart():
         return jsonify({"ok": False, "error": f"차트 생성 실패: {e}"}), 500
 
 
+@app.route("/api/intraday-chart")
+def api_intraday_chart():
+    code = (request.args.get("code") or "").strip()
+    mode = _valid_mode(request.args.get("mode"))
+    try:
+        days = int(request.args.get("days", 7))
+    except (TypeError, ValueError):
+        days = 7
+    try:
+        interval = int(request.args.get("interval", 60))
+    except (TypeError, ValueError):
+        interval = 60
+    try:
+        data = build_intraday(code, mode, days, interval)
+        return jsonify({"ok": True, **data})
+    except (ValueError, RuntimeError) as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        logging.exception("1시간봉 차트 생성 실패")
+        return jsonify({"ok": False, "error": f"1시간봉 생성 실패: {e}"}), 500
+
+
 @app.route("/api/grid-screen")
 def api_grid_screen():
     mode = _valid_mode(request.args.get("mode"))
     try:
-        tol = float(request.args.get("tol", 1.5))
+        tol = float(request.args.get("tol", 0.5))
     except (TypeError, ValueError):
-        tol = 1.5
+        tol = 0.5
     try:
         weeks = int(request.args.get("weeks", 100))
     except (TypeError, ValueError):
@@ -997,12 +1020,80 @@ def api_trades_dates():
     return jsonify([{"date": d, "count": seen[d]} for d in dates])
 
 
+import threading as _threading
+
+_live_holdings_cache: dict = {}   # mode -> (ts, list)
+_live_holdings_lock = _threading.Lock()
+_LIVE_HOLDINGS_TTL = 30           # 초 — 잔고 API 과호출 방지
+
+
+def _fetch_live_holdings(mode: str):
+    """실제 KIS 잔고를 [{code,name,qty,avg_price,current_price,profit_pct}]로 반환. 실패 시 None.
+
+    봇의 부분 캐시(holdings_*.json)가 아니라 계좌의 실제 보유 종목을 직접 조회한다.
+    """
+    now = time.time()
+    with _live_holdings_lock:
+        cached = _live_holdings_cache.get(mode)
+        if cached and now - cached[0] < _LIVE_HOLDINGS_TTL:
+            return cached[1]
+    try:
+        from config import load_config
+        from order.order_client import OrderClient
+        from auth.token_manager import TokenManager
+        with _live_holdings_lock:  # load_config는 TRADING_MODE 환경변수를 읽으므로 잠깐 스왑
+            prev = os.environ.get("TRADING_MODE")
+            os.environ["TRADING_MODE"] = mode
+            try:
+                cfg = load_config()
+            finally:
+                if prev is None:
+                    os.environ.pop("TRADING_MODE", None)
+                else:
+                    os.environ["TRADING_MODE"] = prev
+        token = TokenManager(cfg).get_valid_token()
+        data = OrderClient(cfg)._get_balance(token)
+        if data.get("rt_cd") != "0":
+            return None
+        out = []
+        for it in data.get("output1", []):
+            qty = int(it.get("hldg_qty", "0"))
+            if not it.get("pdno") or qty <= 0:
+                continue
+            try:
+                profit = float(it.get("evlu_pfls_rt") or 0)
+            except (TypeError, ValueError):
+                profit = None
+            cur = int(float(it.get("prpr") or 0)) or None
+            out.append({
+                "code": it["pdno"],
+                "name": (it.get("prdt_name") or "").strip().lstrip("*").strip(),
+                "qty": qty,
+                "avg_price": round(float(it.get("pchs_avg_pric") or 0), 2),
+                "current_price": cur,
+                "profit_pct": profit,
+            })
+        with _live_holdings_lock:
+            _live_holdings_cache[mode] = (now, out)
+        return out
+    except Exception:
+        logging.exception("실거래 잔고 조회 실패")
+        return None
+
+
 @app.route("/api/portfolio")
 def api_portfolio():
     mode = _valid_mode(request.args.get("mode", "mock"))
     env = _read_env()
     m = mode.upper()
     _exclude = set(c.strip() for c in env.get(f"EXCLUDE_LIST_{m}", env.get("EXCLUDE_LIST", "")).split(",") if c.strip())
+
+    # 1순위: 실제 KIS 잔고 (봇 캐시와 무관하게 정확). 실패 시 스냅샷/거래로그로 폴백.
+    live = _fetch_live_holdings(mode)
+    if live is not None:
+        result = [h for h in live if h["code"] not in _exclude]
+        result.sort(key=lambda x: (x["profit_pct"] is None, -(x["profit_pct"] or 0)))
+        return jsonify(result)
 
     snapshot_path = _BASE / f"logs/holdings_{mode}.json"
     if snapshot_path.exists():
@@ -1120,7 +1211,10 @@ def api_trades_summary():
 
 
 def _load_avg_prices() -> dict:
-    """holdings_real.json 스냅샷에서 {code: avg_price} 맵 반환."""
+    """{code: avg_price} 맵. 실제 KIS 잔고 우선, 실패 시 holdings_real.json 스냅샷."""
+    live = _fetch_live_holdings("real")
+    if live is not None:
+        return {h["code"]: h["avg_price"] for h in live if h["avg_price"] > 0}
     snapshot_path = _BASE / "logs/holdings_real.json"
     if not snapshot_path.exists():
         return {}
