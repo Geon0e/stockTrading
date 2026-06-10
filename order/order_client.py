@@ -62,6 +62,30 @@ class OrderClient:
             if item.get("ovrs_pdno") and int(item.get("ovrs_cblc_qty", "0")) > 0
         }
 
+    def get_orderable_cash(self, token: str, stock_code: str = "005930", price: int = 0) -> int:
+        """매수가능조회(inquire-psbl-order)로 미수 없는 실제 주문가능현금(원)을 반환.
+
+        nrcvb_buy_amt(미수없는 매수금액)을 우선 사용. 조회 실패 시 RuntimeError.
+        """
+        tr_id = "VTTC8908R" if self._config.mode == "mock" else "TTTC8908R"
+        params = {
+            "CANO": self._config.cano,
+            "ACNT_PRDT_CD": self._config.acnt_prdt_cd,
+            "PDNO": stock_code,
+            "ORD_UNPR": str(int(price)),
+            "ORD_DVSN": "01" if int(price) <= 0 else "00",  # 01=시장가 기준 / 00=지정가
+            "CMA_EVLU_AMT_ICLD_YN": "N",
+            "OVRS_ICLD_YN": "N",
+        }
+        url = f"{self._config.base_url}/uapi/domestic-stock/v1/trading/inquire-psbl-order"
+        resp = requests.get(url, headers=self._headers(tr_id, token), params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("rt_cd") != "0":
+            raise RuntimeError(f"매수가능조회 실패: {data.get('msg1')}")
+        o = data.get("output", {}) or {}
+        return int(float(o.get("nrcvb_buy_amt") or o.get("ord_psbl_cash") or 0))
+
     def _get_balance(self, token: str, retries: int = 3, backoff: float = 2.0) -> dict:
         """잔고 조회 공통 로직. 5xx 오류 시 최대 retries회 재시도."""
         params = {

@@ -89,13 +89,15 @@ def _get_retry(url, headers, params, timeout=10, retries=3, backoff=0.6):
     return resp
 
 
-def _fetch_candles(code: str, count: int, period: str, creds, token: str) -> list[dict]:
+def _fetch_candles(code: str, count: int, period: str, creds, token: str,
+                   end_date: "datetime.date | None" = None) -> list[dict]:
     """OHLCV를 오래된 순으로 반환. period: 'D'(일봉) | 'W'(주봉).
 
     KIS 호출당 최대 ~100행 → count가 크면 종료일을 앞당겨 가며 페이지네이션한다.
+    end_date 지정 시 그 날짜까지의 데이터만 사용(예: 전날 기준 안정적 스크리닝).
     """
     url = f"{creds.base_url}{_CHART_ENDPOINT}"
-    end = datetime.date.today()
+    end = end_date or datetime.date.today()
     safety = datetime.date.today() - datetime.timedelta(days=365 * 4)
     acc: dict[str, dict] = {}  # date -> bar (페이지 겹침 중복 제거)
     is_first = True

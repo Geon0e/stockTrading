@@ -85,9 +85,15 @@ def _all_codes() -> list:
         return []
 
 
+def _prev_trading_end():
+    """스크리닝 기준 종료일 = 전날 (당일 변동 데이터 제외 → 같은 날 결과 안정)."""
+    import datetime as _dt
+    return _dt.date.today() - _dt.timedelta(days=1)
+
+
 def grid_match(code, creds, token, tol, weeks):
     """주봉 그리드 9선 중 현재가가 ±tol 근접하면 매칭 dict, 아니면 None."""
-    bars = _fetch_candles(code, weeks, "W", creds, token)
+    bars = _fetch_candles(code, weeks, "W", creds, token, end_date=_prev_trading_end())
     if len(bars) < MIN_BARS:
         return None
     grid = [l for l in compute_drawing(bars)["lines"] if l["group"] == "grid"]
@@ -188,7 +194,7 @@ def _load_anchors(mode: str):
 
 def _compute_grid_levels(code, creds, token, weeks):
     """종목의 주봉 그리드 9선 '오늘 위치 레벨' + asc + rsi + 최근주봉 거래량. 없으면 None."""
-    bars = _fetch_candles(code, weeks, "W", creds, token)
+    bars = _fetch_candles(code, weeks, "W", creds, token, end_date=_prev_trading_end())
     if len(bars) < MIN_BARS:
         return None
     grid = [l for l in compute_drawing(bars)["lines"] if l["group"] == "grid"]

@@ -2,6 +2,7 @@ import logging
 import datetime
 import queue
 import threading
+import time
 
 from screener.name_lookup import get_stock_name
 from trader.utils import traded_today as _traded_today, get_daily_budget, deduct_daily_budget, add_daily_budget
@@ -315,6 +316,21 @@ def run_real_domestic_cycle(ctx: dict, token: str, skip_buy: bool = False) -> in
     return bought
 
 
+def _orderable_cash(ctx: dict, token: str) -> int:
+    """실제 주문가능현금(원) — KIS 매수가능조회. ctx에 ~20초 캐시. 조회 실패 시 직전값 유지."""
+    now = time.time()
+    cached = ctx.get("_orderable_cash")
+    if cached and now - cached[0] < 20:
+        return cached[1]
+    try:
+        val = ctx["order_client"].get_orderable_cash(token)
+    except Exception as e:
+        logger.debug(f"[그리드매수] 주문가능현금 조회 실패: {e}")
+        val = cached[1] if cached else 0
+    ctx["_orderable_cash"] = (now, val)
+    return val
+
+
 def run_grid_buy_cycle(ctx: dict) -> int:
     """그리드 전용 빠른 매수 모니터 (짧은 주기로 반복 호출).
 
@@ -342,6 +358,7 @@ def run_grid_buy_cycle(ctx: dict) -> int:
         return 0
 
     token = ctx["token_manager"].get_valid_token()
+    orderable = _orderable_cash(ctx, token)  # 실제 주문가능현금 — 이걸 넘는 주문은 KIS가 거부
     lock = ctx.get("order_lock")
     bought = 0
 
@@ -361,7 +378,7 @@ def run_grid_buy_cycle(ctx: dict) -> int:
             # 락 안에서 재확인 (다른 스레드와 중복 매수·예산 경쟁 방지)
             if code in _traded_today(ctx) or code in ctx.get("holdings_cache", {}):
                 continue
-            available = min(per_position, get_daily_budget(ctx))
+            available = min(per_position, get_daily_budget(ctx), orderable)  # 실제 현금 한도 반영
             quantity = available // price
             if config.order_quantity > 0:
                 quantity = min(quantity, config.order_quantity)
@@ -383,7 +400,11 @@ def run_grid_buy_cycle(ctx: dict) -> int:
             if _tg(ctx):
                 tg_notify_signal(_tg(ctx), code, price, signal_type)
 
-            result = ctx["order_client"].buy(code, quantity, token, limit_price=limit_price)
+            try:
+                result = ctx["order_client"].buy(code, quantity, token, limit_price=limit_price)
+            except RuntimeError as ord_err:
+                logger.warning(f"[그리드매수] 주문 실패 — 이번 사이클 중단: {label} | {ord_err}")
+                break  # 현금 부족 등 거부 시 무한 재시도·알림 폭주 방지
             order_no = result.get("output", {}).get("ODNO", "")
             if _tg(ctx):
                 tg_notify_order_placed(_tg(ctx), code, quantity, limit_price or price, order_no)
@@ -414,7 +435,10 @@ def run_grid_buy_cycle(ctx: dict) -> int:
                     if config.grid_sl_pct > 0:
                         entry["sl_level"] = round(buy_level * (1 - config.grid_sl_pct / 100))
                 ctx["holdings_cache"][code] = entry
-                deduct_daily_budget(ctx, int(float(exec_price) * quantity))
+                _cost = int(float(exec_price) * quantity)
+                deduct_daily_budget(ctx, _cost)
+                orderable = max(0, orderable - _cost)  # 캐시 즉시 차감 (다음 후보 과주문 방지)
+                ctx["_orderable_cash"] = (time.time(), orderable)
                 if ctx.get("realtime_price"):
                     ctx["realtime_price"].subscribe([code])
                 logger.info(
