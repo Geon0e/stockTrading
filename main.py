@@ -1362,7 +1362,7 @@ def main() -> None:
             try:
                 from market.grid_screener import build_daily_anchors
                 logger.info(f"[그리드작도] 전종목 주봉 그리드 작도 중{reason} (수 분 소요)...")
-                r = build_daily_anchors(mode=config.mode)
+                r = build_daily_anchors(mode=config.mode, watch_band_pct=config.grid_watch_band_pct)
                 if r.get("ok"):
                     logger.info(f"[그리드작도] 완료 — 적격 {r['count']}개 / 스캔 {r['scanned']}개 ({r['date']} 고정)")
                 else:

@@ -6,6 +6,7 @@ KOSPI + KOSDAQ 전종목(캐시 목록)을 대상으로, 각 종목의 주봉 �
 import os
 import json
 import time
+import fcntl
 import threading
 from concurrent.futures import ThreadPoolExecutor
 
@@ -22,6 +23,37 @@ _SECTORS_FILE = os.path.join(_ROOT, ".token_cache", "stock_sectors.json")
 MIN_BARS = 30
 WORKERS = 8
 
+# KIS 초당 호출 한도(~20건/초)는 앱키(계좌) 단위라 봇·대시보드 프로세스가 공유한다.
+# 따라서 파일 락 기반 '프로세스 간' 페이서로 모든 KIS 호출을 ~15건/초로 균일하게 흘려보낸다.
+# (주문·잔고 등 비조회 호출 여유분으로 15건/초. 한도 초과 500·재시도가 사라져 스캔이 빨라진다.)
+_RL_MIN_INTERVAL = 1.0 / 15
+_RL_FILE = os.path.join(_ROOT, ".token_cache", "kis_rate.lock")
+
+
+def _rate_limit():
+    """파일 락으로 프로세스 간 공유되는 호출 페이서. 마지막 호출 후 최소간격을 보장."""
+    try:
+        os.makedirs(os.path.dirname(_RL_FILE), exist_ok=True)
+        with open(_RL_FILE, "a+") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)  # 락 보유 중 sleep → 프로세스 간 직렬화
+            try:
+                fh.seek(0)
+                s = fh.read().strip()
+                last = float(s) if s else 0.0
+                now = time.time()
+                wait = last + _RL_MIN_INTERVAL - now
+                if wait > 0:
+                    time.sleep(wait)
+                    now = time.time()
+                fh.seek(0)
+                fh.truncate()
+                fh.write(repr(now))
+                fh.flush()
+            finally:
+                fcntl.flock(fh, fcntl.LOCK_UN)
+    except Exception:
+        time.sleep(_RL_MIN_INTERVAL)  # 파일 문제 시 최소 간격만이라도 적용
+
 
 def _load_sectors() -> dict:
     if os.path.exists(_SECTORS_FILE):
@@ -35,6 +67,7 @@ def _load_sectors() -> dict:
 def _fetch_sector(code, creds, token) -> str:
     """업종명(bstp_kor_isnm) 조회. KIS는 투기 테마가 아닌 업종 분류를 제공."""
     try:
+        _rate_limit()
         url = f"{creds.base_url}/uapi/domestic-stock/v1/quotations/inquire-price"
         r = requests.get(url, headers=_headers(creds, token, "FHKST01010100"),
                          params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code}, timeout=10)
@@ -93,6 +126,7 @@ def _prev_trading_end():
 
 def grid_match(code, creds, token, tol, weeks):
     """주봉 그리드 9선 중 현재가가 ±tol 근접하면 매칭 dict, 아니면 None."""
+    _rate_limit()
     bars = _fetch_candles(code, weeks, "W", creds, token, end_date=_prev_trading_end())
     if len(bars) < MIN_BARS:
         return None
@@ -194,6 +228,7 @@ def _load_anchors(mode: str):
 
 def _compute_grid_levels(code, creds, token, weeks):
     """종목의 주봉 그리드 9선 '오늘 위치 레벨' + asc + rsi + 최근주봉 거래량. 없으면 None."""
+    _rate_limit()
     bars = _fetch_candles(code, weeks, "W", creds, token, end_date=_prev_trading_end())
     if len(bars) < MIN_BARS:
         return None
@@ -205,14 +240,20 @@ def _compute_grid_levels(code, creds, token, weeks):
                "level": round(l["start_val"] + l["slope"] * (n - 1 - l["start_i"]))}
               for l in grid]
     return {"levels": levels, "asc": grid[0]["slope"] > 0,
-            "rsi": rsi([b["close"] for b in bars])[-1], "volume": bars[-1]["volume"]}
+            "rsi": rsi([b["close"] for b in bars])[-1], "volume": bars[-1]["volume"],
+            "close": bars[-1]["close"]}
 
 
-def build_daily_anchors(mode="real", tol_pct=0.1, weeks=100):
+def build_daily_anchors(mode="real", tol_pct=0.1, weeks=100, watch_band_pct=2.0):
     """08:00 1회 호출: 전종목 작도 → 적격(상승채널+RSI 40~65+거래량≥5만) 종목의
-    그리드 레벨을 '오늘 고정'으로 저장한다. 장중엔 이 레벨로 근접만 판정."""
+    그리드 레벨을 '오늘 고정'으로 저장한다. 장중엔 이 레벨로 근접만 판정.
+
+    watch_band_pct>0이면 '지지선(0~2/8)에서 ±band% 이내'인 종목만 저장한다.
+    (장중 봇이 폴링할 후보를 좁혀 KIS 한도 부하·지연을 줄인다. 0이면 전체 저장.)
+    """
     import datetime as _dt
     weeks = max(30, min(int(weeks), 120))
+    band = max(0.0, float(watch_band_pct)) / 100
     creds = _creds(mode)
     token = TokenManager(creds).get_valid_token()
     codes = _all_codes()
@@ -231,26 +272,69 @@ def build_daily_anchors(mode="real", tol_pct=0.1, weeks=100):
                 return
             if g["rsi"] is None or not (40 <= g["rsi"] <= 65) or (g["volume"] or 0) < 50000:
                 return
+            # 관심 밴드: 현재가가 지지선(0~2/8)에서 band% 이내인 종목만 (오늘 닿을 가능성)
+            if band > 0:
+                support = [L["level"] for L in g["levels"] if L["ln"] <= 2 and L["level"] > 0]
+                close = g.get("close") or 0
+                if not support or not close:
+                    return
+                if min(abs(close - lv) / lv for lv in support) > band:
+                    return
             with lock:
                 eligible[code] = {"name": names.get(code, ""), "levels": g["levels"],
-                                  "rsi": g["rsi"], "volume": g["volume"]}
+                                  "rsi": g["rsi"], "volume": g["volume"], "close": g.get("close")}
         except Exception:
             pass
 
     with ThreadPoolExecutor(max_workers=WORKERS) as ex:
         ex.map(scan, codes)
 
-    payload = {"date": _dt.date.today().isoformat(), "mode": mode,
-               "tol_pct": float(tol_pct), "built_at": _dt.datetime.now().isoformat(),
+    today = _dt.date.today().isoformat()
+    payload = {"date": today, "mode": mode, "tol_pct": float(tol_pct),
+               "band_pct": float(watch_band_pct), "built_at": _dt.datetime.now().isoformat(),
                "stocks": eligible}
     path = _anchors_file(mode)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     open(path, "w").write(json.dumps(payload, ensure_ascii=False))
-    return {"ok": True, "count": len(eligible), "scanned": len(codes), "date": payload["date"]}
+
+    # 봇 감시목록 = 스크리너 표시목록. 같은 결과를 날짜별 표시용으로도 저장.
+    rows = _anchor_rows(eligible)
+    screen_payload = {"ok": True, "mode": mode, "tol_pct": float(tol_pct),
+                      "band_pct": float(watch_band_pct), "date": today,
+                      "saved_at": payload["built_at"], "scanned": len(codes),
+                      "count": len(rows), "recommended": len(rows), "results": rows}
+    sdir = os.path.join(_ROOT, ".token_cache", "grid_screen")
+    os.makedirs(sdir, exist_ok=True)
+    open(os.path.join(sdir, f"{mode}_{today}.json"), "w").write(
+        json.dumps(screen_payload, ensure_ascii=False))
+
+    return {"ok": True, "count": len(rows), "scanned": len(codes), "date": today,
+            "results": rows, "recommended": len(rows),
+            "tol_pct": float(tol_pct), "band_pct": float(watch_band_pct)}
+
+
+def _anchor_rows(stocks: dict) -> list:
+    """작도 적격(봇 감시목록) → 스크리너 표시용 행. 지지선(0~2/8) 중 가장 가까운 선 기준."""
+    rows = []
+    for code, v in stocks.items():
+        sup = [L for L in v["levels"] if L["ln"] <= 2 and L["level"] > 0]
+        close = v.get("close") or 0
+        if not sup or not close:
+            continue
+        best = min(sup, key=lambda L: abs(close - L["level"]) / L["level"])
+        rows.append({
+            "code": code, "name": v.get("name", ""), "close": close,
+            "volume": v.get("volume"), "line": best["label"], "level": best["level"],
+            "dist_pct": round(abs(close - best["level"]) / best["level"] * 100, 2),
+            "asc": True, "rsi": v.get("rsi"), "recommended": True, "theme": "",
+        })
+    rows.sort(key=lambda x: x["dist_pct"])  # 지지선에 가까운 순
+    return rows
 
 
 def _fetch_current_price(code, creds, token):
     """현재가(체결가) 조회. 실패 시 None."""
+    _rate_limit()
     url = f"{creds.base_url}/uapi/domestic-stock/v1/quotations/inquire-price"
     r = requests.get(url, headers=_headers(creds, token, "FHKST01010100"),
                      params={"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code}, timeout=10)

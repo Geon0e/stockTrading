@@ -14,7 +14,7 @@ from pathlib import Path
 from flask import Flask, Response, jsonify, redirect, render_template, request, session, stream_with_context
 
 from market.weekly_chart import build_chart, build_intraday
-from market.grid_screener import screen as grid_screen
+from market.grid_screener import screen as grid_screen, build_daily_anchors
 
 app = Flask(__name__)
 
@@ -376,44 +376,60 @@ def api_intraday_chart():
 
 @app.route("/api/grid-screen")
 def api_grid_screen():
+    """전종목 작도(전날 데이터) → 봇 감시목록 = 스크리너 표시목록 (단일화).
+    밴드 ±band% 이내 후보를 만들어 저장하고, 봇은 이 목록을 실시간 감시·매수한다."""
     mode = _valid_mode(request.args.get("mode"))
     try:
-        tol = float(request.args.get("tol", 0.1))
+        band = float(request.args.get("band", 0.5))
     except (TypeError, ValueError):
-        tol = 0.1
+        band = 0.5
     try:
         weeks = int(request.args.get("weeks", 100))
     except (TypeError, ValueError):
         weeks = 100
-    # 멤버 캐시가 없으면 식별에 수 분 걸리므로 동기 요청에서는 빌드하지 않는다.
-    build = request.args.get("build") == "1"
     try:
-        result = grid_screen(mode=mode, tol_pct=tol, weeks=weeks, build_if_missing=build)
-        if result.get("ok"):  # 스캔 성공 시 날짜와 함께 저장 (재진입 시 복원용)
-            try:
-                payload = {**result,
-                           "date": datetime.date.today().isoformat(),
-                           "saved_at": datetime.datetime.now().isoformat()}
-                p = _screen_save_path(mode)
-                p.parent.mkdir(exist_ok=True)
-                p.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-            except Exception:
-                logging.debug("스크리닝 저장 실패", exc_info=True)
+        # build_daily_anchors가 봇 감시목록 + 날짜별 표시용을 함께 저장한다.
+        result = build_daily_anchors(mode=mode, tol_pct=0.1, weeks=weeks, watch_band_pct=band)
         return jsonify(result)
     except Exception as e:
         logging.exception("그리드 스크리닝 실패")
         return jsonify({"ok": False, "error": f"스크리닝 실패: {e}"}), 500
 
 
-def _screen_save_path(mode: str):
-    return _BASE / ".token_cache" / f"grid_screen_{mode}.json"
+_SCREEN_DIR = _BASE / ".token_cache" / "grid_screen"
+
+
+def _screen_save_path(mode: str, date_str: str):
+    return _SCREEN_DIR / f"{mode}_{date_str}.json"
+
+
+def _screen_dates(mode: str) -> list:
+    """저장된 스크리닝 날짜 목록 (최신순)."""
+    if not _SCREEN_DIR.exists():
+        return []
+    prefix = f"{mode}_"
+    dates = [f.stem[len(prefix):] for f in _SCREEN_DIR.glob(f"{prefix}*.json")]
+    return sorted(dates, reverse=True)
+
+
+@app.route("/api/grid-screen/dates")
+def api_grid_screen_dates():
+    """저장된 스크리닝 날짜 목록 반환 (최신순)."""
+    mode = _valid_mode(request.args.get("mode"))
+    return jsonify({"ok": True, "dates": _screen_dates(mode)})
 
 
 @app.route("/api/grid-screen/saved")
 def api_grid_screen_saved():
-    """마지막으로 저장된 스크리닝 결과(날짜 포함) 반환. 없으면 saved=False."""
+    """저장된 스크리닝 결과 반환. date 지정 시 해당 날짜, 없으면 최신. 없으면 saved=False."""
     mode = _valid_mode(request.args.get("mode"))
-    p = _screen_save_path(mode)
+    date_str = (request.args.get("date") or "").strip()
+    if not date_str:
+        dates = _screen_dates(mode)
+        if not dates:
+            return jsonify({"ok": True, "saved": False})
+        date_str = dates[0]
+    p = _screen_save_path(mode, date_str)
     if not p.exists():
         return jsonify({"ok": True, "saved": False})
     try:
@@ -677,6 +693,7 @@ def api_get_config():
         "limit_order_pct": float(env.get(f"LIMIT_ORDER_PCT_{m}", "1.0")),
         "grid_tp_steps": int(env.get(f"GRID_TP_STEPS_{m}", env.get("GRID_TP_STEPS", "2"))),
         "grid_sl_pct": float(env.get(f"GRID_SL_PCT_{m}", env.get("GRID_SL_PCT", "2.0"))),
+        "grid_watch_band_pct": float(env.get(f"GRID_WATCH_BAND_PCT_{m}", env.get("GRID_WATCH_BAND_PCT", "2.0"))),
         "buy_source": env.get(f"BUY_SOURCE_{m}", env.get("BUY_SOURCE", "strategy")),
     }
     if mode == "real":
@@ -986,6 +1003,11 @@ def api_save_restart():
         val = float(cfg["grid_sl_pct"])
         _write_env_key(f"GRID_SL_PCT_{mode.upper()}", str(val))
         changes["그리드 손절"] = f"-{val}% 이탈" if val > 0 else "비활성"
+
+    if "grid_watch_band_pct" in cfg:
+        val = float(cfg["grid_watch_band_pct"])
+        _write_env_key(f"GRID_WATCH_BAND_PCT_{mode.upper()}", str(val))
+        changes["관심 밴드"] = f"지지선 ±{val}%" if val > 0 else "전체"
 
     # ── 전략 저장 ──────────────────────────────────────────────────────────
     if strategy_data:

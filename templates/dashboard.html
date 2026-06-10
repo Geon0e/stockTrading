@@ -536,6 +536,11 @@ code { color: #60a5fa; font-size: 11px; }
             <input type="number" id="cfgGridSlPct" class="cfg-input" style="width:55px" min="0" step="0.1" placeholder="2.0">
             <span class="cfg-hint">% (매수 지지선 아래 이탈, 0=끄기)</span>
           </div>
+          <div class="cfg-row" style="gap:6px;flex-wrap:wrap;margin-top:6px">
+            <span class="cfg-hint">관심 밴드</span>
+            <input type="number" id="cfgGridWatchBand" class="cfg-input" style="width:55px" min="0" step="0.1" placeholder="0.5">
+            <span class="cfg-hint">% — 지지선 ±밴드 이내 종목만 장중 폴링 (작을수록 가볍고 빠름, 0=전체)</span>
+          </div>
         </div>
 
         <div class="cfg-strategy-only" style="margin-top:10px">
@@ -966,9 +971,9 @@ code { color: #60a5fa; font-size: 11px; }
     <!-- 코스피200 그리드 스크리너 -->
     <div id="screenerPanel" style="display:none;flex-direction:column;flex:1;overflow:hidden">
       <div style="background:#0f0f0f;border-bottom:1px solid #1e1e1e;padding:6px 10px;display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap">
-        <span style="font-size:11px;color:#888">전종목 · 그리드선 근접</span>
-        <span style="font-size:10px;color:#555">이격</span>
-        <input id="scrTol" class="cfg-input" style="width:50px" value="0.1"
+        <span style="font-size:11px;color:#888">전종목 작도 · 지지선 근처</span>
+        <span style="font-size:10px;color:#555" title="지지선 ±밴드 이내 종목을 봇 감시목록으로 (매수는 0.1% 터치)">밴드</span>
+        <input id="scrTol" class="cfg-input" style="width:50px" value="0.5"
                onkeydown="if(event.key==='Enter')loadScreener()"><span style="font-size:10px;color:#555">%</span>
         <select id="scrWeeks" class="cfg-select" style="font-size:12px;padding:3px 7px">
           <option value="52">52주</option>
@@ -976,6 +981,8 @@ code { color: #60a5fa; font-size: 11px; }
           <option value="120">120주</option>
         </select>
         <button class="btn-sm" id="scrScanBtn" onclick="loadScreener()">스캔</button>
+        <span style="font-size:10px;color:#555">저장본</span>
+        <select id="scrDateFilter" class="cfg-select" style="font-size:12px;padding:3px 7px" onchange="loadSavedScreener(this.value)"></select>
         <button class="btn-sm" id="rtBtn" onclick="toggleRealtime()" style="background:#15803d;color:#fff">📡 실시간 시작</button>
         <span id="rtDot" class="dot off" style="margin-left:2px"></span>
         <span id="scrStatus" style="font-size:11px;color:#f59e0b;margin-left:auto"></span>
@@ -1246,7 +1253,7 @@ function switchRightTab(tab) {
   if (tab === 'trades')    loadTradeDates();
   if (tab === 'history')   loadSettingsHistory();
   if (tab === 'daily')     loadDailyDates();
-  if (tab === 'screener' && !screenerLoaded) loadSavedScreener();  // 자동 스캔 대신 저장본 복원
+  if (tab === 'screener' && !screenerLoaded) loadScreenerDates();  // 자동 스캔 대신 날짜별 저장본 복원
   if (tab === 'chart')     { if (!chartObj) loadChart(); else setTimeout(resizeCharts, 50); }
 }
 
@@ -1418,6 +1425,7 @@ function saveAndRestart() {
     buy_source:       document.getElementById('cfgBuySource').value || 'strategy',
     grid_tp_steps:    parseInt(document.getElementById('cfgGridTpSteps').value) || 2,
     grid_sl_pct:      parseFloat(document.getElementById('cfgGridSlPct').value) || 0,
+    grid_watch_band_pct: parseFloat(document.getElementById('cfgGridWatchBand').value) || 0,
   };
   const budget = parseInt(document.getElementById('cfgBudget').value) || 0;
   const mp = parseInt(document.getElementById('cfgMaxPositions').value) || 0;
@@ -1562,6 +1570,7 @@ function loadSettings() {
     document.getElementById('cfgBuySource').value = d.buy_source || 'strategy';
     document.getElementById('cfgGridTpSteps').value = d.grid_tp_steps ?? 2;
     document.getElementById('cfgGridSlPct').value = d.grid_sl_pct ?? 2.0;
+    document.getElementById('cfgGridWatchBand').value = d.grid_watch_band_pct ?? 0.5;
     applyBuySourceVisibility();
   }).catch(() => {});
 }
@@ -1987,10 +1996,31 @@ let screenerLoaded = false;
 
 let screenerScanning = false, _scrTimer = null, _scrStartTs = 0;
 
-// 진입 시: 자동 스캔하지 않고 마지막 저장본(날짜 포함)을 복원. 없으면 안내만.
-function loadSavedScreener() {
+// 저장된 스크리닝 날짜 목록을 받아 드롭다운을 채우고, 최신(또는 선택) 날짜 저장본을 표시.
+function loadScreenerDates(selectDate, skipLoad) {
+  const sel = document.getElementById('scrDateFilter');
   const status = document.getElementById('scrStatus');
-  fetch(`/api/grid-screen/saved?mode=${activeMode}`)
+  return fetch(`/api/grid-screen/dates?mode=${activeMode}`)
+    .then(r => r.json())
+    .then(d => {
+      const dates = d.dates || [];
+      sel.innerHTML = dates.length
+        ? dates.map(dt => `<option value="${dt}">${dt}</option>`).join('')
+        : '<option value="">저장본 없음</option>';
+      if (!dates.length) {
+        if (!skipLoad) { status.style.color = '#888'; status.textContent = '스캔 버튼을 눌러 시작하세요'; }
+        return;
+      }
+      sel.value = (selectDate && dates.includes(selectDate)) ? selectDate : dates[0];
+      if (!skipLoad) loadSavedScreener(sel.value);  // skipLoad: 드롭다운만 갱신(방금 스캔한 표 유지)
+    })
+    .catch(() => { if (!skipLoad) { status.style.color = '#888'; status.textContent = '날짜 목록 조회 실패'; } });
+}
+
+// 지정한 날짜(없으면 최신)의 저장본을 표에 복원. 자동 스캔하지 않음.
+function loadSavedScreener(date) {
+  const status = document.getElementById('scrStatus');
+  fetch(`/api/grid-screen/saved?mode=${activeMode}${date ? '&date=' + date : ''}`)
     .then(r => r.json())
     .then(d => {
       if (!d.saved) { status.style.color = '#888'; status.textContent = '스캔 버튼을 눌러 시작하세요'; return; }
@@ -1999,9 +2029,9 @@ function loadSavedScreener() {
       const dt = d.date || (d.saved_at || '').slice(0, 10);
       const today = new Date().toISOString().slice(0, 10);
       status.style.color = dt === today ? '#888' : '#f59e0b';
-      status.textContent = `📁 저장본(${dt}) · ` + status.textContent + (dt === today ? '' : ' · 오늘 데이터로 다시 스캔하세요');
+      status.textContent = `📁 저장본(${dt}) · ` + status.textContent + (dt === today ? '' : ' · 과거 데이터');
     })
-    .catch(() => { status.style.color = '#888'; status.textContent = '스캔 버튼을 눌러 시작하세요'; });
+    .catch(() => { status.style.color = '#888'; status.textContent = '저장본 조회 실패'; });
 }
 
 function loadScreener() {
@@ -2017,7 +2047,7 @@ function loadScreener() {
   }
 
   if (rtSource) stopRealtime();   // 재스캔 시 이전 실시간 구독 정리
-  const tol = document.getElementById('scrTol').value.trim() || '0.1';
+  const band = document.getElementById('scrTol').value.trim() || '0.5';
   const weeks = document.getElementById('scrWeeks').value;
 
   screenerScanning = true;
@@ -2037,13 +2067,14 @@ function loadScreener() {
     if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = ''; btn.textContent = '스캔'; }
   };
 
-  fetch(`/api/grid-screen?tol=${tol}&weeks=${weeks}&mode=${activeMode}`)
+  fetch(`/api/grid-screen?band=${band}&weeks=${weeks}&mode=${activeMode}`)
     .then(r => r.json())
     .then(d => {
       finish();
       if (!d.ok) { status.style.color = '#f87171'; status.textContent = d.error || '실패'; return; }
       screenerLoaded = true;
       renderScreener(d);   // 완료 상태 문구는 renderScreener가 설정
+      loadScreenerDates(new Date().toISOString().slice(0, 10), true);  // 드롭다운에 오늘 추가·선택
     })
     .catch(() => { finish(); status.style.color = '#f87171'; status.textContent = '요청 실패'; });
 }
@@ -2098,7 +2129,7 @@ function renderScreener(d) {
   });
   const status = document.getElementById('scrStatus');
   status.style.color = '#888';
-  status.textContent = `전종목 ${d.scanned}개 중 ${d.count}개 근접 · ⭐추천 ${d.recommended || 0}개 (±${d.tol_pct}%)`;
+  status.textContent = `전종목 ${d.scanned || '-'}개 → 봇 감시후보 ${d.count}개 (밴드 ±${d.band_pct ?? '-'}% · 매수 ±${d.tol_pct ?? 0.1}% 터치)`;
 }
 
 // ── 실시간 시세 (워치리스트 = 현재 스크리너 결과) ─────
