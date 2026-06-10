@@ -1246,7 +1246,7 @@ function switchRightTab(tab) {
   if (tab === 'trades')    loadTradeDates();
   if (tab === 'history')   loadSettingsHistory();
   if (tab === 'daily')     loadDailyDates();
-  if (tab === 'screener' && !screenerLoaded) loadScreener();
+  if (tab === 'screener' && !screenerLoaded) loadSavedScreener();  // 자동 스캔 대신 저장본 복원
   if (tab === 'chart')     { if (!chartObj) loadChart(); else setTimeout(resizeCharts, 50); }
 }
 
@@ -1986,6 +1986,23 @@ function toggleChartRealtime() {
 let screenerLoaded = false;
 
 let screenerScanning = false, _scrTimer = null, _scrStartTs = 0;
+
+// 진입 시: 자동 스캔하지 않고 마지막 저장본(날짜 포함)을 복원. 없으면 안내만.
+function loadSavedScreener() {
+  const status = document.getElementById('scrStatus');
+  fetch(`/api/grid-screen/saved?mode=${activeMode}`)
+    .then(r => r.json())
+    .then(d => {
+      if (!d.saved) { status.style.color = '#888'; status.textContent = '스캔 버튼을 눌러 시작하세요'; return; }
+      screenerLoaded = true;
+      renderScreener(d);
+      const dt = d.date || (d.saved_at || '').slice(0, 10);
+      const today = new Date().toISOString().slice(0, 10);
+      status.style.color = dt === today ? '#888' : '#f59e0b';
+      status.textContent = `📁 저장본(${dt}) · ` + status.textContent + (dt === today ? '' : ' · 오늘 데이터로 다시 스캔하세요');
+    })
+    .catch(() => { status.style.color = '#888'; status.textContent = '스캔 버튼을 눌러 시작하세요'; });
+}
 
 function loadScreener() {
   const status = document.getElementById('scrStatus');

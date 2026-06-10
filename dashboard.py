@@ -388,10 +388,40 @@ def api_grid_screen():
     # 멤버 캐시가 없으면 식별에 수 분 걸리므로 동기 요청에서는 빌드하지 않는다.
     build = request.args.get("build") == "1"
     try:
-        return jsonify(grid_screen(mode=mode, tol_pct=tol, weeks=weeks, build_if_missing=build))
+        result = grid_screen(mode=mode, tol_pct=tol, weeks=weeks, build_if_missing=build)
+        if result.get("ok"):  # 스캔 성공 시 날짜와 함께 저장 (재진입 시 복원용)
+            try:
+                payload = {**result,
+                           "date": datetime.date.today().isoformat(),
+                           "saved_at": datetime.datetime.now().isoformat()}
+                p = _screen_save_path(mode)
+                p.parent.mkdir(exist_ok=True)
+                p.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+            except Exception:
+                logging.debug("스크리닝 저장 실패", exc_info=True)
+        return jsonify(result)
     except Exception as e:
         logging.exception("그리드 스크리닝 실패")
         return jsonify({"ok": False, "error": f"스크리닝 실패: {e}"}), 500
+
+
+def _screen_save_path(mode: str):
+    return _BASE / ".token_cache" / f"grid_screen_{mode}.json"
+
+
+@app.route("/api/grid-screen/saved")
+def api_grid_screen_saved():
+    """마지막으로 저장된 스크리닝 결과(날짜 포함) 반환. 없으면 saved=False."""
+    mode = _valid_mode(request.args.get("mode"))
+    p = _screen_save_path(mode)
+    if not p.exists():
+        return jsonify({"ok": True, "saved": False})
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        data["saved"] = True
+        return jsonify(data)
+    except Exception:
+        return jsonify({"ok": True, "saved": False})
 
 
 # ── 실시간 시세 (봇 WS 경유) ──────────────────────────────────────────────
